@@ -1,0 +1,564 @@
+{
+  "name": "雷司令投资笔记",
+  "tagline": "投资常识,随手可查",
+  "sections": [
+    {
+      "key": "start",
+      "icon": "📕",
+      "t": "开始之前",
+      "blurb": "先讲风险再讲知识:进场前该想清楚的事",
+      "items": [
+        {
+          "id": "start-why",
+          "t": "为什么大多数人炒股亏钱",
+          "free": true
+        },
+        {
+          "id": "start-touzi-touji",
+          "t": "投资、投机、赌博的分界线"
+        },
+        {
+          "id": "start-duoshao-qian",
+          "t": "多少钱适合进股市"
+        },
+        {
+          "id": "start-kaihu",
+          "t": "券商与开户:A股 / 港股 / 美股"
+        },
+        {
+          "id": "start-jiaoyi-shijian",
+          "t": "交易时间全表(含集合竞价)"
+        },
+        {
+          "id": "start-feiyong",
+          "t": "交易成本全解:佣金、印花税、汇率"
+        },
+        {
+          "id": "start-t1t0",
+          "t": "T+1 与 T+0:钱和票什么时候能动"
+        },
+        {
+          "id": "start-zhangdieting",
+          "t": "涨跌停、熔断与临时停牌"
+        },
+        {
+          "id": "start-chuquan",
+          "t": "除权除息与分红派息"
+        },
+        {
+          "id": "start-daxin",
+          "t": "打新股是怎么回事"
+        }
+      ]
+    },
+    {
+      "key": "market",
+      "icon": "📗",
+      "t": "市场地图",
+      "blurb": "市场是什么、谁在里面、规则差在哪",
+      "items": [
+        {
+          "id": "market-gupiao",
+          "t": "股票到底是什么"
+        },
+        {
+          "id": "market-jiage",
+          "t": "股价是怎么形成的(买卖盘与订单簿)"
+        },
+        {
+          "id": "market-shizhi",
+          "t": "市值、股本、流通盘"
+        },
+        {
+          "id": "market-zhishu",
+          "t": "指数:上证、沪深300、纳指、标普、恒指"
+        },
+        {
+          "id": "market-bankuai",
+          "t": "板块与行业分类"
+        },
+        {
+          "id": "market-sanshi",
+          "t": "A股 / 港股 / 美股规则对照表"
+        },
+        {
+          "id": "market-fengge",
+          "t": "大盘小盘、成长价值:风格标签"
+        },
+        {
+          "id": "market-etf",
+          "t": "ETF:和股票、基金有什么区别"
+        },
+        {
+          "id": "market-beixiang",
+          "t": "北向南向资金、两融余额怎么看"
+        },
+        {
+          "id": "market-ipo",
+          "t": "IPO、增发、回购、退市、ST"
+        },
+        {
+          "id": "market-caibaoji",
+          "t": "财报季:业绩什么时候披露"
+        },
+        {
+          "id": "market-longhu",
+          "t": "龙虎榜与大宗交易"
+        }
+      ]
+    },
+    {
+      "key": "kline",
+      "icon": "📘",
+      "t": "K线语言",
+      "blurb": "单根到组合,K线的完整语法",
+      "items": [
+        {
+          "id": "kline-gouzao",
+          "t": "K线的构造:开高低收",
+          "free": true
+        },
+        {
+          "id": "kline-dangen",
+          "t": "单根K线词典:影线与十字星"
+        },
+        {
+          "id": "kline-chuizi",
+          "t": "锤子线与上吊线:同形不同命"
+        },
+        {
+          "id": "kline-tunmo",
+          "t": "吞没形态(阳包阴 / 阴包阳)"
+        },
+        {
+          "id": "kline-qimingxing",
+          "t": "启明星与黄昏星"
+        },
+        {
+          "id": "kline-hongsanbing",
+          "t": "红三兵与三只乌鸦"
+        },
+        {
+          "id": "kline-yunxian",
+          "t": "孕线:市场在犹豫什么"
+        },
+        {
+          "id": "kline-quekou",
+          "t": "跳空缺口四型"
+        },
+        {
+          "id": "kline-zhouqi",
+          "t": "该看哪个周期:分时到月K"
+        },
+        {
+          "id": "kline-liangjia",
+          "t": "成交量与K线:量价四种组合"
+        },
+        {
+          "id": "kline-juxian",
+          "t": "K线的局限:形态为什么会骗人"
+        },
+        {
+          "id": "kline-fuquan",
+          "t": "复权:不懂会看错图"
+        }
+      ]
+    },
+    {
+      "key": "trend",
+      "icon": "📙",
+      "t": "趋势与形态",
+      "blurb": "从单根K线放大到整张图",
+      "items": [
+        {
+          "id": "trend-dingyi",
+          "t": "趋势的定义:高点与低点"
+        },
+        {
+          "id": "trend-zhicheng",
+          "t": "支撑与阻力:怎么画、为什么有效",
+          "free": true
+        },
+        {
+          "id": "trend-qushixian",
+          "t": "趋势线与通道"
+        },
+        {
+          "id": "trend-toujian",
+          "t": "头肩顶与头肩底"
+        },
+        {
+          "id": "trend-shuangding",
+          "t": "双顶双底(M头W底)"
+        },
+        {
+          "id": "trend-sanjiao",
+          "t": "三角形、旗形、楔形"
+        },
+        {
+          "id": "trend-yuanhu",
+          "t": "圆弧顶底与杯柄"
+        },
+        {
+          "id": "trend-tupo",
+          "t": "突破与假突破"
+        },
+        {
+          "id": "trend-jieduan",
+          "t": "趋势的三个阶段(道氏思想)"
+        },
+        {
+          "id": "trend-gailv",
+          "t": "形态学的正确打开方式:概率而非预言"
+        }
+      ]
+    },
+    {
+      "key": "indi",
+      "icon": "📒",
+      "t": "技术指标",
+      "blurb": "每个指标:原理、用法、失效场景",
+      "items": [
+        {
+          "id": "indi-zonggang",
+          "t": "指标总纲:所有指标都是价格的影子"
+        },
+        {
+          "id": "indi-ma",
+          "t": "均线 MA:金叉死叉与多头排列",
+          "free": true
+        },
+        {
+          "id": "indi-ema",
+          "t": "EMA vs MA:差别在哪"
+        },
+        {
+          "id": "indi-macd",
+          "t": "MACD:三根线一座山"
+        },
+        {
+          "id": "indi-kdj",
+          "t": "KDJ:超买超卖与钝化"
+        },
+        {
+          "id": "indi-rsi",
+          "t": "RSI:强弱的温度计"
+        },
+        {
+          "id": "indi-boll",
+          "t": "BOLL 布林带:收口与开口"
+        },
+        {
+          "id": "indi-vol",
+          "t": "成交量:VOL、量比、换手率"
+        },
+        {
+          "id": "indi-obv",
+          "t": "OBV 能量潮"
+        },
+        {
+          "id": "indi-atr",
+          "t": "ATR:波动的呼吸幅度"
+        },
+        {
+          "id": "indi-chouma",
+          "t": "筹码分布:获利盘与套牢盘"
+        },
+        {
+          "id": "indi-bias",
+          "t": "乖离率:偏离多远算远"
+        },
+        {
+          "id": "indi-gongzhen",
+          "t": "指标共振与组合"
+        },
+        {
+          "id": "indi-shixiao",
+          "t": "指标失效时刻"
+        }
+      ]
+    },
+    {
+      "key": "fund",
+      "icon": "📔",
+      "t": "看懂公司",
+      "blurb": "从报表到生意:基本面的尺子",
+      "items": [
+        {
+          "id": "fund-sanbiao",
+          "t": "三张报表的关系"
+        },
+        {
+          "id": "fund-yingshou",
+          "t": "营收与利润:增速比绝对值重要"
+        },
+        {
+          "id": "fund-roe",
+          "t": "毛利率、净利率、ROE"
+        },
+        {
+          "id": "fund-xianjinliu",
+          "t": "现金流为什么比利润诚实"
+        },
+        {
+          "id": "fund-fuzhai",
+          "t": "资产负债率与有息负债"
+        },
+        {
+          "id": "fund-cunhuo",
+          "t": "存货和应收:两个警报器"
+        },
+        {
+          "id": "fund-pe",
+          "t": "PE 市盈率:几倍算贵"
+        },
+        {
+          "id": "fund-pbps",
+          "t": "PB、PS、PEG 各适合什么公司"
+        },
+        {
+          "id": "fund-guxi",
+          "t": "股息率:收息股怎么看"
+        },
+        {
+          "id": "fund-dcf",
+          "t": "DCF 的思想:估值的本质"
+        },
+        {
+          "id": "fund-hucheng",
+          "t": "护城河的五种形态"
+        },
+        {
+          "id": "fund-shangye",
+          "t": "商业模式:这门生意怎么赚钱"
+        },
+        {
+          "id": "fund-hangye",
+          "t": "行业分析:空间、格局、位置"
+        },
+        {
+          "id": "fund-zaojia",
+          "t": "财报造假的常见信号"
+        }
+      ]
+    },
+    {
+      "key": "trade",
+      "icon": "📓",
+      "t": "交易实务",
+      "blurb": "下单、仓位、纪律",
+      "items": [
+        {
+          "id": "trade-dingdan",
+          "t": "订单类型:限价、市价、条件单"
+        },
+        {
+          "id": "trade-cangwei",
+          "t": "仓位管理为什么排第一"
+        },
+        {
+          "id": "trade-fenpi",
+          "t": "分批买卖:梭哈的替代方案"
+        },
+        {
+          "id": "trade-zhisun",
+          "t": "止损:何时认错怎么认"
+        },
+        {
+          "id": "trade-zhiying",
+          "t": "止盈:为什么卖出比买入难"
+        },
+        {
+          "id": "trade-jihua",
+          "t": "交易计划与交易日志"
+        },
+        {
+          "id": "trade-zuoyou",
+          "t": "左侧与右侧:两种进场哲学"
+        },
+        {
+          "id": "trade-dingtou",
+          "t": "定投:数学、纪律与边界"
+        },
+        {
+          "id": "trade-wangge",
+          "t": "网格交易:适用与陷阱"
+        },
+        {
+          "id": "trade-huadian",
+          "t": "滑点、流动性与冲击成本"
+        },
+        {
+          "id": "trade-gganggan",
+          "t": "杠杆与融资:强平线怎么杀人"
+        },
+        {
+          "id": "trade-zhuizhang",
+          "t": "追涨杀跌的完整闭环"
+        }
+      ]
+    },
+    {
+      "key": "master",
+      "icon": "📖",
+      "t": "流派与大师",
+      "blurb": "思想内核 + 代表人物 + 适合谁",
+      "items": [
+        {
+          "id": "master-jiazhi",
+          "t": "价值投资:格雷厄姆到巴菲特"
+        },
+        {
+          "id": "master-duanyongping",
+          "t": "段永平:不懂不做"
+        },
+        {
+          "id": "master-lynch",
+          "t": "彼得·林奇:身边的十倍股"
+        },
+        {
+          "id": "master-fisher",
+          "t": "费雪:买伟大的公司"
+        },
+        {
+          "id": "master-livermore",
+          "t": "利弗莫尔:百年前的教训"
+        },
+        {
+          "id": "master-haigui",
+          "t": "海龟法则:纪律可以训练吗"
+        },
+        {
+          "id": "master-bogle",
+          "t": "博格:承认自己是普通人"
+        },
+        {
+          "id": "master-dalio",
+          "t": "达利欧:周期与全天候"
+        },
+        {
+          "id": "master-quant",
+          "t": "量化是什么"
+        },
+        {
+          "id": "master-duizhao",
+          "t": "流派对照表:你适合哪种"
+        }
+      ]
+    },
+    {
+      "key": "mind",
+      "icon": "📃",
+      "t": "心态与风险",
+      "blurb": "亏钱的解剖学",
+      "items": [
+        {
+          "id": "mind-qizhong-sifa",
+          "t": "散户亏钱的七种死法"
+        },
+        {
+          "id": "mind-sunshi",
+          "t": "损失厌恶:为什么拿不住盈利单",
+          "free": true
+        },
+        {
+          "id": "mind-maoding",
+          "t": "锚定效应:你的成本价,市场不知道"
+        },
+        {
+          "id": "mind-congzhong",
+          "t": "从众与 FOMO:羊群的数学"
+        },
+        {
+          "id": "mind-guodu",
+          "t": "过度自信与频繁交易"
+        },
+        {
+          "id": "mind-xingcunzhe",
+          "t": "幸存者偏差:股神都是幸存者"
+        },
+        {
+          "id": "mind-huiche",
+          "t": "回撤的数学:亏50%要涨100%"
+        },
+        {
+          "id": "mind-heitiane",
+          "t": "黑天鹅与肥尾"
+        },
+        {
+          "id": "mind-peizhi",
+          "t": "多少钱进股市:资产配置常识"
+        },
+        {
+          "id": "mind-qingdan",
+          "t": "一张能睡着觉的风控清单"
+        }
+      ]
+    },
+    {
+      "key": "tool",
+      "icon": "📄",
+      "t": "工具与词典",
+      "blurb": "查阅频次最高的一栏",
+      "items": [
+        {
+          "id": "tool-kanpan",
+          "t": "看盘界面逐项解读"
+        },
+        {
+          "id": "tool-wudang",
+          "t": "五档、内外盘、委比委差"
+        },
+        {
+          "id": "tool-fenshi",
+          "t": "分时图的语言"
+        },
+        {
+          "id": "tool-wangzhan",
+          "t": "常用免费数据网站清单"
+        },
+        {
+          "id": "tool-caibao",
+          "t": "财报去哪读、公告怎么查"
+        },
+        {
+          "id": "tool-rili",
+          "t": "宏观日历:CPI、非农、议息"
+        },
+        {
+          "id": "tool-lilv",
+          "t": "利率:一切资产的地心引力"
+        },
+        {
+          "id": "tool-meilianchu",
+          "t": "美联储加息降息的影响链"
+        },
+        {
+          "id": "tool-zhouqi-shizhong",
+          "t": "经济周期与美林时钟"
+        },
+        {
+          "id": "tool-zhaiquan",
+          "t": "债券、可转债、REITs 一页通"
+        },
+        {
+          "id": "tool-qiquan",
+          "t": "期权是什么(原理与风险)"
+        },
+        {
+          "id": "tool-jijin",
+          "t": "基金:主动、被动、怎么挑"
+        },
+        {
+          "id": "tool-shuyu",
+          "t": "术语速查表"
+        },
+        {
+          "id": "tool-lujing",
+          "t": "这本笔记怎么读:三条路径"
+        }
+      ]
+    }
+  ],
+  "updatedAt": 1783303134979
+}

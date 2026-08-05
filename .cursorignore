@@ -1,0 +1,52 @@
+# 大文件 / 噪声：默认不进 Cursor 索引与 @ 上下文（省 token）
+# 需要时再显式 @ 单个小文件
+
+# 依赖与构建产物
+node_modules/
+**/node_modules/
+app/frontend/dist/
+**/dist/
+.venv/
+**/__pycache__/
+
+# 运行时与二进制
+*.db
+*.sqlite
+app/backend/trades.db
+app/backend/trading-agents*
+*.log
+.DS_Store
+
+# 巨量行情 / 面板 JSON（按需用脚本或 jq 抽检，勿整文件丢进对话）
+app/frontend/public/data/us-stocks.json
+app/frontend/public/data/us-panel-summary.json
+app/frontend/public/data/a-market.json
+app/frontend/public/data/reports.json
+app/backend/data/market.json
+app/backend/data/a-market.json
+app/backend/data/us-panel-summary.json
+app/backend/data/reports-live.json
+app/backend/data/notes-articles.json
+app/backend/data/arena-us.json
+app/backend/data/llm-panel-cache.json
+app/backend/data/notes-cache/
+
+# 探针 / 逆向 dumps
+recovered_source/
+js-reverse-mcp/
+
+# 上游研究用缓存（若存在）
+**/data_cache/
+reports/
+.env
+.env.*
+
+# 历史归档文档（AI 默认不索引，极省 token）
+docs/archive/
+docs/archive/recovered_source/
+output/
+misc/
+misc/**
+assets/
+app/frontend/node_modules/
+.git/

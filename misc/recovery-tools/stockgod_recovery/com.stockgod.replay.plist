@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stockgod.replay</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>STOCKGOD_REPLAY=true</string>
+    <string>STOCKGOD_LOCAL_FRONTEND=false</string>
+    <string>STOCKGOD_REPLAY_DIR=/Applications/workspace/ai管力/账本/TradingAgents/recovered_source/stockgod-replay</string>
+    <string>/Applications/workspace/ai管力/账本/TradingAgents/app/backend/trading-agents</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Applications/workspace/ai管力/账本/TradingAgents/app/backend</string>
+  <key>StandardOutPath</key>
+  <string>/Applications/workspace/ai管力/账本/TradingAgents/app/backend/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Applications/workspace/ai管力/账本/TradingAgents/app/backend/server.log</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>

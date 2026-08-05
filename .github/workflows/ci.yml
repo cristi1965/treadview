@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend go test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/backend/go.mod
+          cache-dependency-path: app/backend/go.sum
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build -o /tmp/tradingagents-backend .
+
+  frontend:
+    name: frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  smoke:
+    name: local api smoke
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/backend/go.mod
+          cache-dependency-path: app/backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+      - name: Build frontend dist
+        working-directory: app/frontend
+        run: npm ci && npm run build
+      - name: Build backend
+        working-directory: app/backend
+        run: go build -o /tmp/tradingagents-backend .
+      - name: Verify API contract smoke
+        working-directory: app/backend
+        run: |
+          STOCKGOD_LOCAL_FRONTEND=true STOCKGOD_REPLAY=false PORT=8765 /tmp/tradingagents-backend > /tmp/tradingagents-backend.log 2>&1 &
+          backend_pid=$!
+          trap 'kill ${backend_pid} 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8765/api/health; then
+              cd ../..
+              ./scripts/verify-local.sh
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/tradingagents-backend.log
+          exit 1

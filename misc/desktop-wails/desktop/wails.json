@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "TradingAgents",
+  "outputfilename": "TradingAgents",
+  "frontend:dir": "../../../frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "scripts/build-wails.sh",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "http://localhost:5173",
+  "author": {
+    "name": "TradingAgents"
+  }
+}

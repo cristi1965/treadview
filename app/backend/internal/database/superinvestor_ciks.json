@@ -1,0 +1,745 @@
+{
+  "updated": "sec-resolved",
+  "count": 81,
+  "entries": {
+    "howard-marks": {
+      "cik": "0000949509",
+      "dbName": "霍华德·马克斯",
+      "fundName": "Oaktree Capital Management",
+      "nameEn": "Howard Marks",
+      "edgarName": "OAKTREE CAPITAL MANAGEMENT LP",
+      "source": "seed",
+      "score": 1.0
+    },
+    "viking-global-investors": {
+      "cik": "0001103804",
+      "dbName": "Viking Global Investors",
+      "fundName": "Viking Global Investors",
+      "nameEn": "Viking Global Investors",
+      "edgarName": "VIKING GLOBAL INVESTORS LP",
+      "source": "seed",
+      "score": 1.0
+    },
+    "lee-ainslie": {
+      "cik": "0000934639",
+      "dbName": "Lee Ainslie",
+      "fundName": "Maverick Capital",
+      "nameEn": "Lee Ainslie",
+      "edgarName": "MAVERICK CAPITAL LTD",
+      "source": "seed",
+      "score": 1.0
+    },
+    "david-einhorn": {
+      "cik": "0001079114",
+      "dbName": "大卫·爱因霍恩",
+      "fundName": "Greenlight Capital",
+      "nameEn": "David Einhorn",
+      "edgarName": "GREENLIGHT CAPITAL INC",
+      "source": "seed",
+      "score": 1.0
+    },
+    "mason-hawkins": {
+      "cik": "0000807985",
+      "dbName": "Mason Hawkins",
+      "fundName": "Southeastern Asset Management",
+      "nameEn": "Mason Hawkins",
+      "edgarName": "SOUTHEASTERN ASSET MANAGEMENT INC/TN/",
+      "source": "sec-search",
+      "score": 0.967
+    },
+    "christopher-bloomstran": {
+      "cik": "0001115373",
+      "dbName": "Christopher Bloomstran",
+      "fundName": "Semper Augustus",
+      "nameEn": "Christopher Bloomstran",
+      "edgarName": "SEMPER AUGUSTUS INVESTMENTS GROUP LLC",
+      "source": "sec-search",
+      "score": 0.852
+    },
+    "chase-coleman": {
+      "cik": "0001167483",
+      "dbName": "蔡斯·科尔曼",
+      "fundName": "Tiger Global Management",
+      "nameEn": "Chase Coleman",
+      "edgarName": "TIGER GLOBAL MANAGEMENT LLC",
+      "source": "seed",
+      "score": 1.0
+    },
+    "francois-rochon": {
+      "cik": "0001641864",
+      "dbName": "Francois Rochon",
+      "fundName": "Giverny Capital",
+      "nameEn": "Francois Rochon",
+      "edgarName": "Giverny Capital Inc.",
+      "source": "sec-search",
+      "score": 0.959
+    },
+    "bill-miller": {
+      "cik": "0001135778",
+      "dbName": "Bill Miller",
+      "fundName": "Miller Value Partners",
+      "nameEn": "Bill Miller",
+      "edgarName": "MILLER VALUE PARTNERS, LLC",
+      "source": "sec-search",
+      "score": 0.97
+    },
+    "hillman-capital-management": {
+      "cik": "0001314620",
+      "dbName": "Hillman Capital Management",
+      "fundName": "Hillman Capital Management",
+      "nameEn": "Hillman Capital Management",
+      "edgarName": "Hillman Capital Management, Inc.",
+      "source": "sec-search",
+      "score": 0.975
+    },
+    "ruane-cunniff-lp": {
+      "cik": "0000728014",
+      "dbName": "Ruane Cunniff LP",
+      "fundName": "Ruane Cunniff LP",
+      "nameEn": "Ruane Cunniff LP",
+      "edgarName": "RUANE, CUNNIFF & GOLDFARB INC",
+      "source": "sec-search",
+      "score": 0.894
+    },
+    "john-rogers": {
+      "cik": "0000936753",
+      "dbName": "John Rogers",
+      "fundName": "Ariel Investments",
+      "nameEn": "John Rogers",
+      "edgarName": "ARIEL INVESTMENTS, LLC",
+      "source": "sec-search",
+      "score": 0.963
+    },
+    "first-eagle-investment-management": {
+      "cik": "0001325447",
+      "dbName": "First Eagle Investment Management",
+      "fundName": "First Eagle Investment Management",
+      "nameEn": "First Eagle Investment Management",
+      "edgarName": "First Eagle Investment Management, LLC",
+      "source": "sec-search",
+      "score": 0.98
+    },
+    "wallace-weitz": {
+      "cik": "0000883965",
+      "dbName": "Wallace Weitz",
+      "fundName": "Weitz Investment Management",
+      "nameEn": "Wallace Weitz",
+      "edgarName": "WEITZ INVESTMENT MANAGEMENT, INC.",
+      "source": "sec-search",
+      "score": 0.976
+    },
+    "sarah-ketterer": {
+      "cik": "0001165797",
+      "dbName": "Sarah Ketterer",
+      "fundName": "Causeway Capital Management",
+      "nameEn": "Sarah Ketterer",
+      "edgarName": "CAUSEWAY CAPITAL MANAGEMENT LLC",
+      "source": "sec-search",
+      "score": 0.976
+    },
+    "polen-capital-management": {
+      "cik": "0001034524",
+      "dbName": "Polen Capital Management",
+      "fundName": "Polen Capital Management",
+      "nameEn": "Polen Capital Management",
+      "edgarName": "POLEN CAPITAL MANAGEMENT LLC",
+      "source": "sec-search",
+      "score": 0.973
+    },
+    "thomas-russo": {
+      "cik": "0000860643",
+      "dbName": "Thomas Russo",
+      "fundName": "Gardner Russo & Quinn",
+      "nameEn": "Thomas Russo",
+      "edgarName": "GARDNER RUSSO & QUINN LLC",
+      "source": "sec-search",
+      "score": 0.968
+    },
+    "kahn-brothers-group": {
+      "cik": "0001039565",
+      "dbName": "Kahn Brothers Group",
+      "fundName": "Kahn Brothers Group",
+      "nameEn": "Kahn Brothers Group",
+      "edgarName": "KAHN BROTHERS GROUP INC",
+      "source": "sec-search",
+      "score": 0.967
+    },
+    "harry-burn": {
+      "cik": "0000820124",
+      "dbName": "Harry Burn",
+      "fundName": "Sound Shore",
+      "nameEn": "Harry Burn",
+      "edgarName": "SOUND SHORE MANAGEMENT INC /CT/",
+      "source": "sec-search",
+      "score": 0.843
+    },
+    "tweedy-browne": {
+      "cik": "0000732905",
+      "dbName": "Tweedy Browne",
+      "fundName": "Tweedy Browne",
+      "nameEn": "Tweedy Browne",
+      "edgarName": "Tweedy, Browne Co LLC",
+      "source": "sec-search",
+      "score": 0.926
+    },
+    "thomas-gayner": {
+      "cik": "0001096343",
+      "dbName": "托马斯·盖纳",
+      "fundName": "Markel Group",
+      "nameEn": "Thomas Gayner",
+      "edgarName": "MARKEL GROUP INC.",
+      "source": "sec-search",
+      "score": 0.95
+    },
+    "yacktman-asset-management": {
+      "cik": "0000905567",
+      "dbName": "Yacktman Asset Management",
+      "fundName": "Yacktman Asset Management",
+      "nameEn": "Yacktman Asset Management",
+      "edgarName": "YACKTMAN ASSET MANAGEMENT LP",
+      "source": "sec-search",
+      "score": 0.98
+    },
+    "david-katz": {
+      "cik": "0001016287",
+      "dbName": "David Katz",
+      "fundName": "Matrix Asset Advisors",
+      "nameEn": "David Katz",
+      "edgarName": "MATRIX ASSET ADVISORS INC/NY",
+      "source": "sec-search",
+      "score": 0.956
+    },
+    "robert-olstein": {
+      "cik": "0000947996",
+      "dbName": "Robert Olstein",
+      "fundName": "Olstein Capital Management",
+      "nameEn": "Robert Olstein",
+      "edgarName": "Olstein Capital Management, L.P.",
+      "source": "sec-search",
+      "score": 0.981
+    },
+    "samantha-mclemore": {
+      "cik": "0001854794",
+      "dbName": "Samantha McLemore",
+      "fundName": "Patient Capital Management",
+      "nameEn": "Samantha McLemore",
+      "edgarName": "Patient Capital Management, LLC",
+      "source": "sec-search",
+      "score": 0.975
+    },
+    "henry-ellenbogen": {
+      "cik": "0001798849",
+      "dbName": "Henry Ellenbogen",
+      "fundName": "Durable Capital Partners",
+      "nameEn": "Henry Ellenbogen",
+      "edgarName": "Durable Capital Partners LP",
+      "source": "sec-search",
+      "score": 0.979
+    },
+    "glenn-greenberg": {
+      "cik": "0001553733",
+      "dbName": "Glenn Greenberg",
+      "fundName": "Brave Warrior Advisors",
+      "nameEn": "Glenn Greenberg",
+      "edgarName": "Brave Warrior Advisors, LLC",
+      "source": "sec-search",
+      "score": 0.971
+    },
+    "stephen-mandel": {
+      "cik": "0001061165",
+      "dbName": "Stephen Mandel",
+      "fundName": "Lone Pine Capital",
+      "nameEn": "Stephen Mandel",
+      "edgarName": "LONE PINE CAPITAL LLC",
+      "source": "seed",
+      "score": 1.0
+    },
+    "daniel-loeb": {
+      "cik": "0001040273",
+      "dbName": "Daniel Loeb",
+      "fundName": "Third Point",
+      "nameEn": "Daniel Loeb",
+      "edgarName": "Third Point LLC",
+      "source": "sec-search",
+      "score": 0.946
+    },
+    "vulcan-value-partners": {
+      "cik": "0001556785",
+      "dbName": "Vulcan Value Partners",
+      "fundName": "Vulcan Value Partners",
+      "nameEn": "Vulcan Value Partners",
+      "edgarName": "Vulcan Value Partners, LLC",
+      "source": "sec-search",
+      "score": 0.97
+    },
+    "david-tepper": {
+      "cik": "0001006438",
+      "dbName": "大卫·泰珀",
+      "fundName": "Appaloosa Management",
+      "nameEn": "David Tepper",
+      "edgarName": "APPALOOSA MANAGEMENT LP",
+      "source": "sec-search",
+      "score": 0.976
+    },
+    "warren-buffett": {
+      "cik": "0001067983",
+      "dbName": "巴菲特",
+      "fundName": "Berkshire Hathaway",
+      "nameEn": "Warren Buffett",
+      "edgarName": "BERKSHIRE HATHAWAY INC",
+      "source": "seed",
+      "score": 1.0
+    },
+    "prem-watsa": {
+      "cik": "0000915191",
+      "dbName": "普雷姆·沃特萨",
+      "fundName": "Fairfax Financial Holdings",
+      "nameEn": "Prem Watsa",
+      "edgarName": "FAIRFAX FINANCIAL HOLDINGS LTD/ CAN",
+      "source": "sec-search",
+      "score": 0.953
+    },
+    "ako-capital": {
+      "cik": "0001376879",
+      "dbName": "AKO Capital",
+      "fundName": "AKO Capital",
+      "nameEn": "AKO Capital",
+      "edgarName": "AKO CAPITAL LLP",
+      "source": "sec-search",
+      "score": 0.946
+    },
+    "lindsell-train": {
+      "cik": "0001484150",
+      "dbName": "Lindsell Train",
+      "fundName": "Lindsell Train",
+      "nameEn": "Lindsell Train",
+      "edgarName": "Lindsell Train Ltd",
+      "source": "sec-search",
+      "score": 0.956
+    },
+    "greenhaven-associates": {
+      "cik": "0000846222",
+      "dbName": "Greenhaven Associates",
+      "fundName": "Greenhaven Associates",
+      "nameEn": "Greenhaven Associates",
+      "edgarName": "GREENHAVEN ASSOCIATES INC",
+      "source": "sec-search",
+      "score": 0.97
+    },
+    "bill-melinda-gates-foundation-trust": {
+      "cik": "0001166559",
+      "dbName": "Bill & Melinda Gates Foundation Trust",
+      "fundName": "Bill & Melinda Gates Foundation Trust",
+      "nameEn": "Bill & Melinda Gates Foundation Trust",
+      "edgarName": "GATES FOUNDATION TRUST",
+      "source": "seed",
+      "score": 1.0
+    },
+    "david-rolfe": {
+      "cik": "0000859804",
+      "dbName": "David Rolfe",
+      "fundName": "Wedgewood Partners",
+      "nameEn": "David Rolfe",
+      "edgarName": "WEDGEWOOD PARTNERS INC",
+      "source": "sec-search",
+      "score": 0.965
+    },
+    "seth-klarman": {
+      "cik": "0001061768",
+      "dbName": "塞斯·卡拉曼",
+      "fundName": "Baupost Group",
+      "nameEn": "Seth Klarman",
+      "edgarName": "BAUPOST GROUP LLC/MA",
+      "source": "seed",
+      "score": 1.0
+    },
+    "duan-yongping": {
+      "cik": "0001759760",
+      "dbName": "段永平",
+      "fundName": "H&H International Investment",
+      "nameEn": "Duan Yongping",
+      "edgarName": "H&H International Investment, LLC",
+      "source": "sec-search",
+      "score": 0.976
+    },
+    "chuck-akre": {
+      "cik": "0001112520",
+      "dbName": "查克·阿克尔",
+      "fundName": "Akre Capital Management",
+      "nameEn": "Chuck Akre",
+      "edgarName": "AKRE CAPITAL MANAGEMENT LLC",
+      "source": "sec-search",
+      "score": 0.972
+    },
+    "li-lu": {
+      "cik": "0001709323",
+      "dbName": "李录",
+      "fundName": "Himalaya Capital Management",
+      "nameEn": "Li Lu",
+      "edgarName": "Himalaya Capital Management LLC",
+      "source": "sec-search",
+      "score": 0.976
+    },
+    "robert-vinall": {
+      "cik": "0001766596",
+      "dbName": "Robert Vinall",
+      "fundName": "RV Capital GmbH",
+      "nameEn": "Robert Vinall",
+      "edgarName": "RV Capital AG",
+      "source": "sec-search",
+      "score": 0.625
+    },
+    "carl-icahn": {
+      "cik": "0000921669",
+      "dbName": "卡尔·伊坎",
+      "fundName": "Icahn Capital Management",
+      "nameEn": "Carl Icahn",
+      "edgarName": "ICAHN CARL C",
+      "source": "seed",
+      "score": 1.0
+    },
+    "alex-roepers": {
+      "cik": "0001063296",
+      "dbName": "Alex Roepers",
+      "fundName": "Atlantic Investment Management",
+      "nameEn": "Alex Roepers",
+      "edgarName": "ATLANTIC INVESTMENT MANAGEMENT, INC.",
+      "source": "sec-search",
+      "score": 0.978
+    },
+    "triple-frond-partners": {
+      "cik": "0001454502",
+      "dbName": "Triple Frond Partners",
+      "fundName": "Triple Frond Partners",
+      "nameEn": "Triple Frond Partners",
+      "edgarName": "Triple Frond Partners LLC",
+      "source": "sec-search",
+      "score": 0.97
+    },
+    "dennis-hong": {
+      "cik": "0001766908",
+      "dbName": "Dennis Hong",
+      "fundName": "ShawSpring Partners",
+      "nameEn": "Dennis Hong",
+      "edgarName": "ShawSpring Partners LLC",
+      "source": "sec-search",
+      "score": 0.967
+    },
+    "abrams-bison-investments": {
+      "cik": "0001317588",
+      "dbName": "Abrams Bison Investments",
+      "fundName": "Abrams Bison Investments",
+      "nameEn": "Abrams Bison Investments",
+      "edgarName": "ABRAMS BISON INVESTMENTS, LLC",
+      "source": "sec-search",
+      "score": 0.973
+    },
+    "bill-ackman": {
+      "cik": "0001336528",
+      "dbName": "比尔·阿克曼",
+      "fundName": "Pershing Square Capital Management",
+      "nameEn": "Bill Ackman",
+      "edgarName": "Pershing Square Capital Management, L.P.",
+      "source": "seed",
+      "score": 1.0
+    },
+    "pat-dorsey": {
+      "cik": "0001671657",
+      "dbName": "Pat Dorsey",
+      "fundName": "Dorsey Asset Management",
+      "nameEn": "Pat Dorsey",
+      "edgarName": "Dorsey Asset Management, LLC",
+      "source": "sec-search",
+      "score": 0.972
+    },
+    "bruce-berkowitz": {
+      "cik": "0001056831",
+      "dbName": "布鲁斯·伯科威茨",
+      "fundName": "Fairholme Capital",
+      "nameEn": "Bruce Berkowitz",
+      "edgarName": "FAIRHOLME CAPITAL MANAGEMENT LLC",
+      "source": "sec-search",
+      "score": 0.893
+    },
+    "chris-hohn": {
+      "cik": "0001647251",
+      "dbName": "Chris Hohn",
+      "fundName": "TCI Fund Management",
+      "nameEn": "Chris Hohn",
+      "edgarName": "TCI Fund Management Ltd",
+      "source": "sec-search",
+      "score": 0.967
+    },
+    "nelson-peltz": {
+      "cik": "0001345471",
+      "dbName": "纳尔逊·佩尔茨",
+      "fundName": "Trian Fund Management",
+      "nameEn": "Nelson Peltz",
+      "edgarName": "TRIAN FUND MANAGEMENT, L.P.",
+      "source": "seed",
+      "score": 1.0
+    },
+    "glenn-welling": {
+      "cik": "0001559771",
+      "dbName": "Glenn Welling",
+      "fundName": "Engaged Capital",
+      "nameEn": "Glenn Welling",
+      "edgarName": "Engaged Capital LLC",
+      "source": "sec-search",
+      "score": 0.959
+    },
+    "altarock-partners": {
+      "cik": "0001631014",
+      "dbName": "AltaRock Partners",
+      "fundName": "AltaRock Partners",
+      "nameEn": "AltaRock Partners",
+      "edgarName": "ALTAROCK PARTNERS LP",
+      "source": "sec-search",
+      "score": 0.972
+    },
+    "bryan-lawrence": {
+      "cik": "0001657335",
+      "dbName": "Bryan Lawrence",
+      "fundName": "Oakcliff Capital",
+      "nameEn": "Bryan Lawrence",
+      "edgarName": "Oakcliff Capital Partners, LP",
+      "source": "sec-search",
+      "score": 0.905
+    },
+    "valley-forge-capital-management": {
+      "cik": "0001697868",
+      "dbName": "Valley Forge Capital Management",
+      "fundName": "Valley Forge Capital Management",
+      "nameEn": "Valley Forge Capital Management",
+      "edgarName": "Valley Forge Capital Management, LP",
+      "source": "sec-search",
+      "score": 0.984
+    },
+    "guy-spier": {
+      "cik": "0001404599",
+      "dbName": "盖伊·斯皮尔",
+      "fundName": "Aquamarine Capital",
+      "nameEn": "Guy Spier",
+      "edgarName": "Aquamarine Capital Management, LLC",
+      "source": "sec-search",
+      "score": 0.897
+    },
+    "greg-alexander": {
+      "cik": "0001773994",
+      "dbName": "Greg Alexander",
+      "fundName": "Conifer Management",
+      "nameEn": "Greg Alexander",
+      "edgarName": "Conifer Management, L.L.C.",
+      "source": "sec-search",
+      "score": 0.965
+    },
+    "norbert-lou": {
+      "cik": "0001631664",
+      "dbName": "Norbert Lou",
+      "fundName": "Punch Card Management",
+      "nameEn": "Norbert Lou",
+      "edgarName": "Punch Card Management L.P.",
+      "source": "sec-search",
+      "score": 0.977
+    },
+    "clifford-sosin": {
+      "cik": "0001697591",
+      "dbName": "Clifford Sosin",
+      "fundName": "CAS Investment Partners",
+      "nameEn": "Clifford Sosin",
+      "edgarName": "CAS Investment Partners, LLC",
+      "source": "sec-search",
+      "score": 0.972
+    },
+    "michael-burry": {
+      "cik": "0001649339",
+      "dbName": "迈克尔·伯里",
+      "fundName": "Scion Asset Management",
+      "nameEn": "Michael Burry",
+      "edgarName": "Scion Asset Management, LLC",
+      "source": "seed",
+      "score": 1.0
+    },
+    "first-pacific-advisors": {
+      "cik": "0000109501",
+      "dbName": "First Pacific Advisors",
+      "fundName": "First Pacific Advisors",
+      "nameEn": "First Pacific Advisors",
+      "edgarName": "FIRST PACIFIC ADVISORS INC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "third-avenue-management": {
+      "cik": "0001002858",
+      "dbName": "Third Avenue Management",
+      "fundName": "Third Avenue Management",
+      "nameEn": "Third Avenue Management",
+      "edgarName": "THIRD AVENUE MANAGEMENT LLC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "jensen-investment-management": {
+      "cik": "0001106129",
+      "dbName": "Jensen Investment Management",
+      "fundName": "Jensen Investment Management",
+      "nameEn": "Jensen Investment Management",
+      "edgarName": "JENSEN INVESTMENT MANAGEMENT INC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "richard-pzena": {
+      "cik": "0001027796",
+      "dbName": "Richard Pzena",
+      "fundName": "Pzena Investment Management",
+      "nameEn": "Richard Pzena",
+      "edgarName": "PZENA INVESTMENT MANAGEMENT LLC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "william-von-mueffling": {
+      "cik": "0001279936",
+      "dbName": "William Von Mueffling",
+      "fundName": "Cantillon Capital Management",
+      "nameEn": "William Von Mueffling",
+      "edgarName": "CANTILLON CAPITAL MANAGEMENT LLC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "terry-smith": {
+      "cik": "0001520023",
+      "dbName": "特里·史密斯",
+      "fundName": "Fundsmith",
+      "nameEn": "Terry Smith",
+      "edgarName": "Fundsmith Equity Fund, L.P.",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "francis-chou": {
+      "cik": "0001389402",
+      "dbName": "Francis Chou",
+      "fundName": "Chou Associates",
+      "nameEn": "Francis Chou",
+      "edgarName": "Chou Associates Fund",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "john-armitage": {
+      "cik": "0001581811",
+      "dbName": "John Armitage",
+      "fundName": "Egerton Capital",
+      "nameEn": "John Armitage",
+      "edgarName": "Egerton Capital (UK) LLP",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "david-abrams": {
+      "cik": "0001358706",
+      "dbName": "David Abrams",
+      "fundName": "Abrams Capital Management",
+      "nameEn": "David Abrams",
+      "edgarName": "ABRAMS CAPITAL MANAGEMENT, L.P.",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "josh-tarasoff": {
+      "cik": "0001766504",
+      "dbName": "Josh Tarasoff",
+      "fundName": "Greenlea Lane Capital",
+      "nameEn": "Josh Tarasoff",
+      "edgarName": "GREENLEA LANE CAPITAL MANAGEMENT, LLC",
+      "source": "manual-recovery",
+      "score": 0.5
+    },
+    "bill-nygren": {
+      "cik": "0000813917",
+      "dbName": "比尔·奈格伦",
+      "fundName": "Oakmark Funds",
+      "nameEn": "Bill Nygren",
+      "edgarName": "HARRIS ASSOCIATES L P",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Harris Associates"
+    },
+    "leon-cooperman": {
+      "cik": "0000898202",
+      "dbName": "Leon Cooperman",
+      "fundName": "Leon Cooperman",
+      "nameEn": "Leon Cooperman",
+      "edgarName": "Omega Advisors Inc.",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Omega Advisors"
+    },
+    "valueact-capital": {
+      "cik": "0001418814",
+      "dbName": "ValueAct Capital",
+      "fundName": "ValueAct Capital",
+      "nameEn": "ValueAct Capital",
+      "edgarName": "ValueAct Holdings, L.P.",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "VALUEACT HOLDINGS"
+    },
+    "arnold-van-den-berg": {
+      "cik": "0001841857",
+      "dbName": "Arnold Van Den Berg",
+      "fundName": "Century Management",
+      "nameEn": "Arnold Van Den Berg",
+      "edgarName": "CM Management, LLC",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "CM MANAGEMENT"
+    },
+    "dodge-cox-funds": {
+      "cik": "0000200217",
+      "dbName": "Dodge & Cox Funds",
+      "fundName": "Dodge & Cox Funds",
+      "nameEn": "Dodge & Cox Funds",
+      "edgarName": "DODGE & COX",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Dodge & Cox"
+    },
+    "mairs-power-funds": {
+      "cik": "0001070134",
+      "dbName": "Mairs & Power Funds",
+      "fundName": "Mairs & Power Funds",
+      "nameEn": "Mairs & Power Funds",
+      "edgarName": "MAIRS & POWER INC",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Mairs & Power Inc"
+    },
+    "christopher-davis": {
+      "cik": "0001036325",
+      "dbName": "Christopher Davis",
+      "fundName": "Davis Advisors",
+      "nameEn": "Christopher Davis",
+      "edgarName": "DAVIS SELECTED ADVISERS",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Davis Selected Advisers"
+    },
+    "torray-funds": {
+      "cik": "0000098758",
+      "dbName": "Torray Funds",
+      "fundName": "Torray Funds",
+      "nameEn": "Torray Funds",
+      "edgarName": "TORRAY INVESTMENT PARTNERS LLC",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Torray LLC"
+    },
+    "mohnish-pabrai": {
+      "cik": "0001549575",
+      "dbName": "莫尼什·帕伯莱",
+      "fundName": "Pabrai Investments",
+      "nameEn": "Mohnish Pabrai",
+      "edgarName": "Dalal Street, LLC",
+      "source": "targeted-search",
+      "score": 0.9,
+      "query": "Dalal Street"
+    }
+  },
+  "missing": {}
+}

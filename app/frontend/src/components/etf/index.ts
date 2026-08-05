@@ -1,0 +1,1 @@
+export { SectorCard } from './SectorCard';

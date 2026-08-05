@@ -1,0 +1,13 @@
+---
+description: React 前端约定（StockGod + 驾驶舱）
+globs: app/frontend/src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend React
+
+- 双壳：StockGod 用 `StockGodShell`；驾驶舱用 `Layout`；`/notes` 保持独立壳。
+- API 走 `src/utils/api.ts`；开发时 Vite 代理 `/api` → `:8765`。
+- 个股实时价覆盖后，市值等派生字段按价比缩放（见 `StockDetail`）。
+- 优先复用现有 store（stocks/reports/etf/whales），避免平行再拉一套源站镜像。
+- 静态宇宙数据在 `public/data/`；大 JSON 勿在组件里 import 全量除非已有模式。

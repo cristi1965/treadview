@@ -1,0 +1,12 @@
+---
+description: Go 后端约定（api / market / scoring）
+alwaysApply: false
+---
+# Backend Go
+
+- Handler 保持薄：解析请求 → 调 `market` / `scoring` / `dataflows` → 写响应。
+- `/api/stocks` 必须尊重 `market=us|cn`；勿退回写死 mock 列表。
+- `/api/market` 与 US stocks 同源：优先 `us-stocks.json`。
+- `/api/quote` 链路：TV → Yahoo → snapshot；修 pct 时同时看 TV 列与 Yahoo 两根 close。
+- 新增可测纯函数放同包 `*_test.go`；`go test ./...` 应可通过且不依赖外网。
+- 响应可加 `X-Data-Source` 标明数据来源，便于验收。

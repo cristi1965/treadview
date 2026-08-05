@@ -1,0 +1,15 @@
+---
+description: TradingAgents/StockGod 本地自建项目总则（AI 必读）
+alwaysApply: true
+---
+
+# Project rules
+
+- 先读 `AGENTS.md` 与 `docs/README.md`。
+- 真实仓库在 `pxx-trading-Agents`（`TradingAgents` 可能是符号链接）。
+- 默认自建数据，禁止默认可达地反代 `stockgod.xyz`。
+- 中文回复；勿把 API Key / `.env` 写入文档或提交。
+- 品牌：「我不是神」（禁止「我不是股神」）。
+- 改行情后跑 `./scripts/verify-local.sh`。
+- 不提交：`*.db`、二进制、`misc` 里的恢复 dumps、缓存。
+- 默认不要读 `misc/`（旧文档/探针/Wails/移动草稿）。
