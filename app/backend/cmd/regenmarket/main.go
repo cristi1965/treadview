@@ -5,6 +5,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -68,7 +69,10 @@ func main() {
 		Source:  "yahoo-batch",
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr, Timeout: 30 * time.Second}
 	const batch = 80
 	for i := 0; i < len(syms); i += batch {
 		j := i + batch

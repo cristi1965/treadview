@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"trading-agents/internal/models"
+
+	"gorm.io/gorm"
 )
 
 type congressLiveFile struct {
@@ -26,14 +28,18 @@ type congressLiveFile struct {
 		Amount     string `json:"amount"`
 		Date       string `json:"date"`
 		Source     string `json:"source"`
+		FilingDate string `json:"filingDate"`
+		SourceURL  string `json:"sourceURL"`
+		FilingID   string `json:"filingId"`
 	} `json:"trades"`
 }
 
 // RunCapitolTradesSync refreshes congress trades from:
-//  1) House Clerk PTR PDFs (official)
-//  2) Public secondary aggregators for Senate/House overlay (Quiver public page,
+//  1. House Clerk PTR PDFs (official)
+//  2. Public secondary aggregators for Senate/House overlay (Quiver public page,
 //     optional QUIVER_API_KEY / FMP_API_KEY, GitHub historical fallback)
-//  3) members.json seed gap-fill
+//  3. members.json seed gap-fill
+//
 // Senate eFD is blocked (403) from many datacenter IPs — secondary sources cover it.
 func RunCapitolTradesSync() {
 	log.Println("[CapTrades] Syncing House PTR + secondary aggregators...")
@@ -50,10 +56,10 @@ func RunCapitolTradesSync() {
 		houseCount = loadCongressLiveJSON(livePath)
 	}
 
-	// If live parse produced nothing, fall back to full members seed.
+	// Never replace a committed disclosure snapshot with seed data after a live
+	// fetch failure. The bootstrap path already seeds an empty database.
 	if houseCount == 0 {
-		log.Println("[CapTrades] live PTR empty — loading full members.json seed")
-		houseCount = reloadAllMembersSeed()
+		log.Println("[CapTrades] live PTR empty — retaining committed congress snapshot")
 	} else {
 		seedFill := fillMissingMembersFromSeed()
 		log.Printf("[CapTrades] seed gap-fill rows=%d", seedFill)
@@ -224,6 +230,10 @@ func mergeCongressSecondaryJSON(path string) int {
 			Type:       side,
 			Amount:     amount,
 			Date:       t.Date,
+			Source:     congressSourceOrUnknown(t.Source, file.Source),
+			FilingDate: congressFieldOrUnknown(t.FilingDate),
+			SourceURL:  congressFieldOrUnknown(t.SourceURL),
+			FilingID:   congressFieldOrUnknown(t.FilingID),
 		}
 		if err := DB.Create(&row).Error; err == nil {
 			n++
@@ -245,13 +255,11 @@ func loadCongressLiveJSON(path string) int {
 		return 0
 	}
 
-	DB.Exec("DELETE FROM congress_trades")
-
 	partyByName := memberPartyIndex()
-	n := 0
+	rows := make([]models.CongressTrade, 0, len(file.Trades))
 	for _, t := range file.Trades {
 		sym := strings.ToUpper(strings.TrimSpace(t.Symbol))
-		if sym == "" || len(sym) > 12 {
+		if sym == "" || len(sym) > 12 || strings.TrimSpace(t.Politician) == "" || strings.TrimSpace(t.Date) == "" {
 			continue
 		}
 		side := strings.ToUpper(t.Type)
@@ -266,7 +274,7 @@ func loadCongressLiveJSON(path string) int {
 		if party == "" {
 			party = lookupParty(partyByName, t.Politician)
 		}
-		row := models.CongressTrade{
+		rows = append(rows, models.CongressTrade{
 			Politician: t.Politician,
 			Title:      "Representative",
 			Party:      party,
@@ -275,13 +283,27 @@ func loadCongressLiveJSON(path string) int {
 			Type:       side,
 			Amount:     strings.ReplaceAll(t.Amount, "\n", " "),
 			Date:       t.Date,
-		}
-		if err := DB.Create(&row).Error; err == nil {
-			n++
-		}
+			Source:     congressSourceOrUnknown(t.Source, file.Source),
+			FilingDate: congressFieldOrUnknown(t.FilingDate),
+			SourceURL:  congressFieldOrUnknown(t.SourceURL),
+			FilingID:   congressFieldOrUnknown(t.FilingID),
+		})
 	}
-	log.Printf("[CapTrades] loaded %d house PTR trades from %s (%s)", n, path, file.UpdatedAt)
-	return n
+	if len(rows) == 0 {
+		log.Printf("[CapTrades] refusing to replace congress snapshot with zero valid rows from %s", path)
+		return 0
+	}
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM congress_trades").Error; err != nil {
+			return err
+		}
+		return tx.Create(&rows).Error
+	}); err != nil {
+		log.Printf("[CapTrades] atomic congress replacement failed for %s: %v", path, err)
+		return 0
+	}
+	log.Printf("[CapTrades] loaded %d house PTR trades from %s (%s)", len(rows), path, file.UpdatedAt)
+	return len(rows)
 }
 
 func memberPartyIndex() map[string]string {
@@ -382,6 +404,10 @@ func insertMembersSeed(onlyMissing bool) int {
 				Type:       side,
 				Amount:     amount,
 				Date:       trade.Date,
+				Source:     congressFieldOrUnknown(trade.Source),
+				FilingDate: congressFieldOrUnknown(trade.FilingDate),
+				SourceURL:  congressFieldOrUnknown(trade.SourceURL),
+				FilingID:   congressFieldOrUnknown(trade.FilingID),
 			}
 			if err := DB.Create(&row).Error; err == nil {
 				n++
@@ -424,6 +450,10 @@ func refreshSenateTradesFromSeed() int {
 				Type:       side,
 				Amount:     amount,
 				Date:       trade.Date,
+				Source:     congressFieldOrUnknown(trade.Source),
+				FilingDate: congressFieldOrUnknown(trade.FilingDate),
+				SourceURL:  congressFieldOrUnknown(trade.SourceURL),
+				FilingID:   congressFieldOrUnknown(trade.FilingID),
 			}
 			if err := DB.Create(&row).Error; err == nil {
 				n++

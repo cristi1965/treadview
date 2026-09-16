@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react'
 import { useCommandStore } from '../stores/commandStore'
 import { Plus } from 'lucide-react'
+import { useI18n } from '../i18n'
+import { useSearchParams } from 'react-router-dom'
 
 export const Journal: React.FC = () => {
-  const { trades, addTrade, fetchTrades, fetchStats, stats } = useCommandStore()
+  const { t } = useI18n()
+  const [searchParams] = useSearchParams()
+  const sourcePaperOrderID = searchParams.get('paper_order_id')?.trim() || ''
+  const sourceResearchRunID = searchParams.get('research_run_id')?.trim() || ''
+  const { trades, addTrade, fetchTrades, fetchStats, stats, tradesError, statsError } = useCommandStore()
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   // Form State
-  const [symbol, setSymbol] = useState('')
+  const [symbol, setSymbol] = useState(searchParams.get('symbol')?.trim().toUpperCase() || '')
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('BUY')
   const [entryPrice, setEntryPrice] = useState('')
   const [exitPrice, setExitPrice] = useState('')
@@ -16,8 +24,8 @@ export const Journal: React.FC = () => {
   const [notes, setNotes] = useState('')
 
   useEffect(() => {
-    fetchTrades()
-    fetchStats()
+    void fetchTrades()
+    void fetchStats()
   }, [])
 
   // Auto calculate PnL when entry/exit/shares change
@@ -37,35 +45,69 @@ export const Journal: React.FC = () => {
     e.preventDefault()
     if (!symbol || !entryPrice || !exitPrice || !shares) return
 
-    await addTrade({
-      symbol: symbol.toUpperCase(),
-      direction,
-      entryPrice: Number(entryPrice),
-      exitPrice: Number(exitPrice),
-      shares: Number(shares),
-      pnl: Number(pnl),
-      emotionScore: Number(emotionScore),
-      notes,
-    })
-
-    // Reset Form
-    setSymbol('')
-    setEntryPrice('')
-    setExitPrice('')
-    setShares('')
-    setPnl('')
-    setNotes('')
+    setSaving(true)
+    setSaveError('')
+    try {
+      await addTrade({
+        symbol: symbol.toUpperCase(),
+        direction,
+        entryPrice: Number(entryPrice),
+        exitPrice: Number(exitPrice),
+        shares: Number(shares),
+        pnl: Number(pnl),
+        emotionScore: Number(emotionScore),
+        notes,
+        paperOrderId: sourcePaperOrderID || undefined,
+        researchRunId: sourceResearchRunID || undefined,
+      })
+      setSymbol('')
+      setEntryPrice('')
+      setExitPrice('')
+      setShares('')
+      setPnl('')
+      setNotes('')
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t('journal.saveFail'))
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const exportTrades = () => {
+    const blob = new Blob([JSON.stringify(trades, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `trading_journal_${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const QUICK_TICKERS = ['NVDA', 'TSLA', 'AAPL', 'PLTR', 'CRWV', 'NBIS', '300750', '300308']
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* Page Header */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'white' }}>交易复盘日志 (Trading Journal)</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'white' }}>{t('journal.title')}</h2>
+          <span style={{ border: '1px solid rgba(56, 189, 248, 0.45)', color: '#bae6fd', padding: '0.2rem 0.5rem', fontSize: '0.7rem', fontWeight: 800 }}>PAPER ONLY</span>
+        </div>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          系统化记录每笔真实或模拟交易，自动统计胜率与累积损益，践行知行合一的风控原则。
+          {t('journal.sub')}
         </p>
+        {sourcePaperOrderID && <p className="text-xs text-sky-200">来源 Paper 订单 <span className="font-mono">{sourcePaperOrderID}</span>{sourceResearchRunID ? <> · 研究 Run <span className="font-mono">{sourceResearchRunID}</span></> : null}</p>}
       </div>
+
+      {(tradesError || statsError) && (
+        <div role="alert" className="card" style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}>
+          <strong>{t('journal.loadFail')}</strong>
+          <div style={{ marginTop: '0.35rem', fontSize: '0.8rem' }}>{[tradesError, statsError].filter(Boolean).join('；')}</div>
+          <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem' }} onClick={() => void Promise.all([fetchTrades(), fetchStats()])}>
+            {t('journal.retry')}
+          </button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div style={{
@@ -74,65 +116,97 @@ export const Journal: React.FC = () => {
         gap: '1.5rem'
       }}>
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>账户累计净损益</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('journal.pnl')}</span>
           <span style={{
             fontSize: '1.8rem',
             fontWeight: 700,
             fontFamily: 'var(--font-mono)',
             color: (stats?.totalPnL || 0) >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
           }}>
-            ${(stats?.totalPnL || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {statsError ? '—' : `$${(stats?.totalPnL || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
           </span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>已实现交易损益汇总</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t('journal.pnlHint')}</span>
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>交易胜率 (Win Rate)</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('journal.winRate')}</span>
           <span style={{
             fontSize: '1.8rem',
             fontWeight: 700,
             fontFamily: 'var(--font-mono)',
             color: 'var(--color-info)'
           }}>
-            {((stats?.winRate || 0) * 100).toFixed(1)}%
+            {statsError ? '—' : `${((stats?.winRate || 0) * 100).toFixed(1)}%`}
           </span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {trades.filter(t => t.pnl > 0).length} 胜 / {trades.filter(t => t.pnl <= 0).length} 负
+            {tradesError ? '—' : t('journal.winLoss', { win: trades.filter(tr => tr.pnl > 0).length, loss: trades.filter(tr => tr.pnl <= 0).length })}
           </span>
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>总交易笔数</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('journal.count')}</span>
           <span style={{
             fontSize: '1.8rem',
             fontWeight: 700,
             fontFamily: 'var(--font-mono)',
             color: 'white'
           }}>
-            {trades.length}
+            {tradesError ? '—' : trades.length}
           </span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>本地SQLite数据库已同步</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{tradesError ? t('journal.unavailable') : t('journal.synced')}</span>
         </div>
       </div>
 
       {/* Main Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 2fr',
-        gap: '2rem',
-        alignItems: 'start'
-      }}>
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(280px,1fr)_minmax(0,2fr)] lg:gap-8">
         {/* Input Form */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-            <Plus size={18} style={{ color: 'var(--color-primary)' }} />
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white' }}>录入最新交易</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Plus size={18} style={{ color: 'var(--color-primary)' }} />
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white' }}>{t('journal.add')}</h3>
+            </div>
+            {!tradesError && trades.length > 0 && (
+              <button
+                type="button"
+                onClick={exportTrades}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                title="导出交易复盘记录为 JSON"
+              >
+                📥 导出
+              </button>
+            )}
+          </div>
+
+          {/* Quick Tickers */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+            {QUICK_TICKERS.map((sym) => (
+              <button
+                key={sym}
+                type="button"
+                onClick={() => setSymbol(sym)}
+                className="min-h-11 sm:min-h-0"
+                style={{
+                  fontSize: '0.7rem',
+                  padding: '0.2rem 0.45rem',
+                  borderRadius: '0.25rem',
+                  background: symbol === sym ? 'var(--color-primary)' : 'rgba(255,255,255,0.06)',
+                  color: symbol === sym ? '#000' : 'var(--text-secondary)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                {sym}
+              </button>
+            ))}
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="input-group">
-                <span className="input-label">交易标的</span>
+                <span className="input-label">{t('journal.symbol')}</span>
                 <input
                   type="text"
                   required
@@ -145,22 +219,22 @@ export const Journal: React.FC = () => {
               </div>
 
               <div className="input-group">
-                <span className="input-label">交易方向</span>
+                <span className="input-label">{t('journal.dir')}</span>
                 <select
                   value={direction}
                   onChange={(e) => setDirection(e.target.value as 'BUY' | 'SELL')}
                   className="text-input"
                   style={{ appearance: 'none', WebkitAppearance: 'none' }}
                 >
-                  <option value="BUY">买入 (Long)</option>
-                  <option value="SELL">卖出 (Short)</option>
+                  <option value="BUY">{t('journal.long')}</option>
+                  <option value="SELL">{t('journal.short')}</option>
                 </select>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="input-group">
-                <span className="input-label">开仓价</span>
+                <span className="input-label">{t('journal.entry')}</span>
                 <input
                   type="number"
                   step="0.01"
@@ -173,7 +247,7 @@ export const Journal: React.FC = () => {
               </div>
 
               <div className="input-group">
-                <span className="input-label">平仓价</span>
+                <span className="input-label">{t('journal.exit')}</span>
                 <input
                   type="number"
                   step="0.01"
@@ -186,7 +260,7 @@ export const Journal: React.FC = () => {
               </div>
 
               <div className="input-group">
-                <span className="input-label">股数/头寸</span>
+                <span className="input-label">{t('journal.shares')}</span>
                 <input
                   type="number"
                   required
@@ -198,9 +272,9 @@ export const Journal: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="input-group">
-                <span className="input-label">计算损益 (USD)</span>
+                <span className="input-label">{t('journal.calcPnl')}</span>
                 <input
                   type="number"
                   step="0.01"
@@ -218,7 +292,7 @@ export const Journal: React.FC = () => {
 
               <div className="input-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>心理/情绪评分</span>
+                  <span>{t('journal.emotion')}</span>
                   <span style={{ fontWeight: 600, color: 'var(--color-info)' }}>{emotionScore}/10</span>
                 </span>
                 <input
@@ -233,19 +307,20 @@ export const Journal: React.FC = () => {
             </div>
 
             <div className="input-group">
-              <span className="input-label">复盘笔记 / 逻辑说明</span>
+              <span className="input-label">{t('journal.notes')}</span>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                placeholder="记录当时的市场大盘情绪，开仓的理由以及需要改善的心理偏误..."
+                placeholder={t('journal.notesPh')}
                 className="text-input"
                 style={{ resize: 'none', height: '80px', padding: '0.5rem 0.75rem' }}
               />
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem' }}>
-              保存并写入 SQLite DB
+            {saveError && <div role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8rem' }}>{t('journal.saveFail')}：{saveError} {t('journal.retryHint')}</div>}
+            <button type="submit" disabled={saving} className="btn btn-primary" style={{ padding: '0.75rem' }}>
+              {saving ? t('journal.saving') : t('journal.save')}
             </button>
           </form>
         </div>
@@ -253,20 +328,20 @@ export const Journal: React.FC = () => {
         {/* Trade History Table */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowX: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white' }}>历史明细记录</h3>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>已加载 {trades.length} 条数据</span>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'white' }}>{t('journal.history')}</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{tradesError ? t('journal.unavailable') : t('journal.loaded', { n: trades.length })}</span>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', textAlign: 'left' }}>
-                <th style={{ padding: '0.75rem 0.5rem' }}>标的</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>方向</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>开仓 / 平仓</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>股数</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>实现损益</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>情绪</th>
-                <th style={{ padding: '0.75rem 0.5rem' }}>复盘备注</th>
+                <th style={{ padding: '0.75rem 0.5rem' }}>{t('journal.colSymbol')}</th>
+                <th style={{ padding: '0.75rem 0.5rem' }}>{t('journal.colDir')}</th>
+                <th style={{ padding: '0.75rem 0.5rem' }}>{t('journal.colPx')}</th>
+                <th style={{ padding: '0.75rem 0.5rem' }}>{t('journal.colShares')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>{t('journal.colPnl')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{t('journal.colEmo')}</th>
+                <th style={{ padding: '0.75rem 0.5rem' }}>{t('journal.colNotes')}</th>
               </tr>
             </thead>
             <tbody>
@@ -274,6 +349,8 @@ export const Journal: React.FC = () => {
                 <tr key={trade.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.02)' }}>
                   <td style={{ padding: '0.85rem 0.5rem', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'white' }}>
                     {trade.symbol}
+                    {trade.paperOrderId && <span className="mt-1 block text-[10px] font-normal text-sky-300">Paper {trade.paperOrderId}</span>}
+                    {trade.researchRunId && <span className="block text-[10px] font-normal text-slate-400">Run {trade.researchRunId}</span>}
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem' }}>
                     <span style={{
@@ -284,7 +361,7 @@ export const Journal: React.FC = () => {
                       backgroundColor: trade.direction === 'BUY' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
                       color: trade.direction === 'BUY' ? 'var(--color-success)' : 'var(--color-danger)'
                     }}>
-                      {trade.direction === 'BUY' ? '做多' : '做空'}
+                      {trade.direction === 'BUY' ? t('journal.longTag') : t('journal.shortTag')}
                     </span>
                   </td>
                   <td style={{ padding: '0.85rem 0.5rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
@@ -319,10 +396,10 @@ export const Journal: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {trades.length === 0 && (
+              {(tradesError || trades.length === 0) && (
                 <tr>
                   <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    暂无复盘交易明细记录，请使用左侧表单提交录入
+                    {tradesError ? t('journal.unavailable') : t('journal.empty')}
                   </td>
                 </tr>
               )}

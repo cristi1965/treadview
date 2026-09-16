@@ -12,3 +12,6 @@ trades.db
 trading-agents
 trading-agents-*
 *.log
+
+# local LLM title cache (do not ignore flash-live.json)
+data/flash-title-cache.json

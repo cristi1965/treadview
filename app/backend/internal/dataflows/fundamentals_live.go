@@ -14,26 +14,32 @@ import (
 
 var numRe = regexp.MustCompile(`[-+]?(?:\d+\.?\d*|\.\d+)`)
 
-// GetStockMetricsLive prefers East Money valuation + Nasdaq ratios (Yahoo crumb is often 429).
+// GetStockMetricsLive uses SEC filing facts first for US issuers. Quote-derived
+// ratios remain a fallback and cannot replace missing filing-period evidence.
 func (c *YFinanceClient) GetStockMetricsLive(ticker string) (*StockMetrics, error) {
 	ticker = strings.TrimSpace(strings.ToUpper(ticker))
 	if ticker == "" {
 		return nil, fmt.Errorf("empty ticker")
 	}
 
-	out := &StockMetrics{Symbol: ticker, Source: "eastmoney+nasdaq"}
-
-	// 1) Yahoo when crumb works (best completeness)
-	if ym, err := c.GetStockMetrics(ticker); err == nil && ym != nil && (ym.TrailingPE > 0 || ym.GrossMargin > 0) {
-		ym.Source = "yahoo-quoteSummary"
-		return ym, nil
+	out := &StockMetrics{Symbol: ticker, FiscalPeriod: "unknown", AsOf: "unknown"}
+	if DetectMarket(ticker) == MarketUS {
+		if err := enrichFromSEC(c.httpClient, out); err == nil {
+			FinalizeStockMetricsEvidence(out, time.Now())
+			return out, nil
+		}
+		if err := enrichFromNasdaqFinancials(c.httpClient, out); err == nil {
+			FinalizeStockMetricsEvidence(out, time.Now())
+			return out, nil
+		}
+		return nil, fmt.Errorf("filing-bound fundamentals unavailable for %s", ticker)
 	}
 
 	emErr := enrichFromEastMoney(c.httpClient, out)
-	ndErr := enrichFromNasdaq(c.httpClient, out)
 	if out.TrailingPE == 0 && out.GrossMargin == 0 && out.Price == 0 && out.Sector == "" {
-		return nil, fmt.Errorf("fundamentals unavailable for %s (em=%v nd=%v)", ticker, emErr, ndErr)
+		return nil, fmt.Errorf("fundamentals unavailable for %s (em=%v)", ticker, emErr)
 	}
+	FinalizeStockMetricsEvidence(out, time.Now())
 	return out, nil
 }
 
@@ -74,6 +80,21 @@ func enrichFromEastMoney(client *http.Client, out *StockMetrics) error {
 			out.PriceToBook = pb
 		}
 		if out.Price > 0 || out.TrailingPE > 0 || out.PriceToBook > 0 {
+			sourceURL := fmt.Sprintf("https://quote.eastmoney.com/us/%s.html", url.PathEscape(out.Symbol))
+			fields := make([]string, 0, 4)
+			if out.Name != "" {
+				fields = append(fields, "name")
+			}
+			if out.Price > 0 {
+				fields = append(fields, "price")
+			}
+			if out.TrailingPE > 0 {
+				fields = append(fields, "trailingPE")
+			}
+			if out.PriceToBook > 0 {
+				fields = append(fields, "priceToBook")
+			}
+			addMetricSource(out, "eastmoney", "East Money US quote", sourceURL, "unknown", fields...)
 			return nil
 		}
 		lastErr = fmt.Errorf("eastmoney empty board=%d", board)
@@ -103,29 +124,44 @@ func enrichFromNasdaq(client *http.Client, out *StockMetrics) error {
 		}
 		if json.Unmarshal(body, &resp) == nil {
 			sd := resp.Data.SummaryData
+			fields := make([]string, 0, 6)
 			if v := sd["Sector"].Value; v != "" && out.Sector == "" {
 				out.Sector = v
+				fields = append(fields, "sector")
 			}
 			if v := sd["Industry"].Value; v != "" && out.Industry == "" {
 				out.Industry = v
+				fields = append(fields, "industry")
 			}
 			if v := sd["OneYrTarget"].Value; v != "" && out.TargetMeanPrice == 0 {
 				out.TargetMeanPrice = parseMoney(v)
+				if out.TargetMeanPrice != 0 {
+					fields = append(fields, "targetMeanPrice")
+				}
 			}
 			if v := sd["Yield"].Value; v != "" && out.DividendYield == 0 {
 				out.DividendYield = parsePercentFraction(v)
+				if out.DividendYield != 0 {
+					fields = append(fields, "dividendYield")
+				}
 			}
 			if v := sd["FiftTwoWeekHighLow"].Value; v != "" {
 				hi, lo := parseRange(v)
 				if out.FiftyTwoHigh == 0 {
 					out.FiftyTwoHigh = hi
+					if hi != 0 {
+						fields = append(fields, "fiftyTwoWeekHigh")
+					}
 				}
 				if out.FiftyTwoLow == 0 {
 					out.FiftyTwoLow = lo
+					if lo != 0 {
+						fields = append(fields, "fiftyTwoWeekLow")
+					}
 				}
 			}
-			if v := sd["MarketCap"].Value; v != "" && out.Name == "" {
-				// keep as-is; market cap not stored on StockMetrics
+			if len(fields) > 0 {
+				addMetricSource(out, "nasdaq", "Nasdaq summary", fmt.Sprintf("https://www.nasdaq.com/market-activity/stocks/%s", strings.ToLower(url.PathEscape(out.Symbol))), "unknown", fields...)
 			}
 		}
 	}
@@ -146,20 +182,36 @@ func enrichFromNasdaq(client *http.Client, out *StockMetrics) error {
 			} `json:"data"`
 		}
 		if json.Unmarshal(body, &resp) == nil {
+			fields := make([]string, 0, 4)
 			if out.Name == "" {
 				out.Name = resp.Data.CompanyName
+				if out.Name != "" {
+					fields = append(fields, "name")
+				}
 			}
 			if out.Price == 0 {
 				out.Price = parseMoney(resp.Data.PrimaryData.LastSalePrice)
+				if out.Price != 0 {
+					fields = append(fields, "price")
+				}
 			}
 			if out.FiftyTwoHigh == 0 || out.FiftyTwoLow == 0 {
 				hi, lo := parseRange(resp.Data.KeyStats.FiftyTwoWeekHighLow.Value)
 				if out.FiftyTwoHigh == 0 {
 					out.FiftyTwoHigh = hi
+					if hi != 0 {
+						fields = append(fields, "fiftyTwoWeekHigh")
+					}
 				}
 				if out.FiftyTwoLow == 0 {
 					out.FiftyTwoLow = lo
+					if lo != 0 {
+						fields = append(fields, "fiftyTwoWeekLow")
+					}
 				}
+			}
+			if len(fields) > 0 {
+				addMetricSource(out, "nasdaq", "Nasdaq quote", fmt.Sprintf("https://www.nasdaq.com/market-activity/stocks/%s", strings.ToLower(url.PathEscape(out.Symbol))), "unknown", fields...)
 			}
 		}
 	}
@@ -174,19 +226,32 @@ func enrichFromNasdaq(client *http.Client, out *StockMetrics) error {
 			} `json:"data"`
 		}
 		if json.Unmarshal(body, &resp) == nil {
+			fields := make([]string, 0, 3)
 			for _, row := range resp.Data.FinancialRatiosTable.Rows {
 				label := strings.ToLower(strings.TrimSpace(row["value1"]))
 				val := row["value2"]
 				switch label {
 				case "gross margin":
-					out.GrossMargin = parsePercentFraction(val)
+					if parsed := parsePercentFraction(val); parsed != 0 {
+						out.GrossMargin = parsed
+						fields = append(fields, "grossMargin")
+					}
 				case "profit margin":
-					out.ProfitMargin = parsePercentFraction(val)
+					if parsed := parsePercentFraction(val); parsed != 0 {
+						out.ProfitMargin = parsed
+						fields = append(fields, "profitMargin")
+					}
 				case "after tax roe", "roe":
-					out.ROE = parsePercentFraction(val)
+					if parsed := parsePercentFraction(val); parsed != 0 {
+						out.ROE = parsed
+						fields = append(fields, "roe")
+					}
 				case "operating margin":
 					// unused field on StockMetrics; skip
 				}
+			}
+			if len(fields) > 0 {
+				addMetricSource(out, "nasdaq", "Nasdaq financials", fmt.Sprintf("https://www.nasdaq.com/market-activity/stocks/%s/financials", strings.ToLower(url.PathEscape(out.Symbol))), "unknown", fields...)
 			}
 		}
 	}
@@ -204,8 +269,12 @@ func enrichFromNasdaq(client *http.Client, out *StockMetrics) error {
 			} `json:"data"`
 		}
 		if json.Unmarshal(body, &resp) == nil {
+			fields := make([]string, 0, 2)
 			if out.TargetMeanPrice == 0 {
 				out.TargetMeanPrice = resp.Data.ConsensusOverview.PriceTarget
+				if out.TargetMeanPrice != 0 {
+					fields = append(fields, "targetMeanPrice")
+				}
 			}
 			b, h, s := resp.Data.ConsensusOverview.Buy, resp.Data.ConsensusOverview.Hold, resp.Data.ConsensusOverview.Sell
 			if out.Recommendation == "" && (b+h+s) > 0 {
@@ -219,12 +288,21 @@ func enrichFromNasdaq(client *http.Client, out *StockMetrics) error {
 				default:
 					out.Recommendation = "hold"
 				}
+				fields = append(fields, "recommendation")
+			}
+			if len(fields) > 0 {
+				addMetricSource(out, "nasdaq", "Nasdaq analyst research", fmt.Sprintf("https://www.nasdaq.com/market-activity/stocks/%s/analyst-research", strings.ToLower(url.PathEscape(out.Symbol))), "unknown", fields...)
 			}
 		}
 	}
 
 	if out.FiftyTwoHigh > out.FiftyTwoLow && out.FiftyTwoLow > 0 && out.Price > 0 {
 		out.FiftyTwoPos = (out.Price - out.FiftyTwoLow) / (out.FiftyTwoHigh - out.FiftyTwoLow) * 100
+		if source, ok := out.FieldSources["fiftyTwoWeekHigh"]; ok {
+			out.FieldSources["fiftyTwoWeekPos"] = source
+		} else if source, ok := out.FieldSources["fiftyTwoWeekLow"]; ok {
+			out.FieldSources["fiftyTwoWeekPos"] = source
+		}
 	}
 	return nil
 }

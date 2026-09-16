@@ -1,6 +1,19 @@
-// 价格格式化
-export const formatPrice = (price: number): string => {
-  return `$${price.toFixed(2)}`;
+// 价格格式化（支持美股、港股、A股、日股、台股、英股、欧股及加密货币）
+export const detectCurrency = (sym?: string): string => {
+  if (!sym) return '$';
+  const s = sym.trim().toUpperCase();
+  if (s.endsWith('.HK') || (/^\d{1,5}$/.test(s) && !/^\d{6}$/.test(s)) || s.startsWith('HKEX:')) return 'HK$';
+  if (s.endsWith('.SS') || s.endsWith('.SZ') || s.endsWith('.BJ') || /^\d{6}$/.test(s) || s.startsWith('SSE:') || s.startsWith('SZSE:')) return '¥';
+  if (s.endsWith('.TW') || s.startsWith('TWSE:')) return 'NT$';
+  if (s.endsWith('.T') || s.startsWith('TSE:')) return 'JP¥';
+  if (s.endsWith('.L') || s.startsWith('LSE:')) return '£';
+  if (s.endsWith('.DE') || s.startsWith('XETR:')) return '€';
+  return '$';
+};
+
+export const formatPrice = (price: number, sym?: string): string => {
+  const cur = detectCurrency(sym);
+  return `${cur}${price.toFixed(2)}`;
 };
 
 // 百分比格式化
@@ -10,12 +23,13 @@ export const formatPercent = (percent: number, showSign: boolean = true): string
 };
 
 // 市值/AUM 格式化
-export const formatAUM = (aum: number): string => {
-  if (aum >= 1e12) return `$${(aum / 1e12).toFixed(1)}T`;
-  if (aum >= 1e9) return `$${Math.round(aum / 1e9)}B`;
-  if (aum >= 1e6) return `$${Math.round(aum / 1e6)}M`;
-  if (aum >= 1e3) return `$${Math.round(aum / 1e3)}K`;
-  return `$${Math.round(aum)}`;
+export const formatAUM = (aum: number, sym?: string): string => {
+  const cur = detectCurrency(sym);
+  if (aum >= 1e12) return `${cur}${(aum / 1e12).toFixed(1)}T`;
+  if (aum >= 1e9) return `${cur}${Math.round(aum / 1e9)}B`;
+  if (aum >= 1e6) return `${cur}${Math.round(aum / 1e6)}M`;
+  if (aum >= 1e3) return `${cur}${Math.round(aum / 1e3)}K`;
+  return `${cur}${Math.round(aum)}`;
 };
 
 // 数字简写格式化

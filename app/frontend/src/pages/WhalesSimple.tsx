@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useWhalesStore } from '../stores/whalesStore'
+import { Avatar } from '../components/Avatar'
 import { 
   Search, TrendingUp, ArrowUp, ArrowDown, Users, 
   Landmark, BarChart3, RefreshCw, X,
@@ -25,7 +26,7 @@ export const WhalesSimple: React.FC = () => {
     gurus, consensusStocks, congressTrades, currentStockHolders,
     syncing,
     fetchGurus, fetchConsensus, fetchCongressTrades, fetchStockHolders,
-    triggerSync, clearStockHolders
+    clearStockHolders
   } = useWhalesStore()
 
   // View mode
@@ -61,7 +62,6 @@ export const WhalesSimple: React.FC = () => {
     fetchConsensus()
     fetchGurus()
     fetchCongressTrades()
-    triggerSync()
   }, [])
 
   // 定期刷新（每30秒）
@@ -806,32 +806,14 @@ export const WhalesSimple: React.FC = () => {
                       gap: '1rem',
                       marginBottom: '1rem'
                     }}>
-                      {/* 真实头像 */}
-                      <div style={{
-                        width: '60px',
-                        height: '60px',
-                        borderRadius: '50%',
-                        overflow: 'hidden',
-                        flexShrink: 0,
-                        border: '3px solid rgba(249, 115, 22, 0.2)',
-                        boxShadow: '0 4px 12px rgba(249, 115, 22, 0.2)',
-                        backgroundColor: '#1e293b',
-                        position: 'relative'
-                      }}>
-                        <img
-                          src={avatarUrl}
-                          alt={guru.name}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover'
-                          }}
-                          onError={(e) => {
-                            // 如果主 API 失败，切换到备用方案
-                            e.currentTarget.src = fallbackAvatarUrl
-                          }}
+                      {/* 头像 */}
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <Avatar
+                          name={guru.name}
+                          slug={guru.slug || String(guru.id)}
+                          letter={guru.avatarCode}
+                          size={60}
                         />
-                        {/* 在线状态指示器 */}
                         <div style={{
                           position: 'absolute',
                           bottom: '2px',
@@ -982,25 +964,12 @@ export const WhalesSimple: React.FC = () => {
                     gap: '1rem',
                     marginBottom: '0.75rem'
                   }}>
-                    {/* 议员头像 - 首字母缩写 */}
-                    <div style={{
-                      width: '60px',
-                      height: '60px',
-                      borderRadius: '50%',
-                      backgroundColor: avatarBgColor,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      boxShadow: `0 4px 12px ${avatarBgColor}40`,
-                      fontSize: '1.3rem',
-                      fontWeight: 700,
-                      color: 'white',
-                      fontFamily: 'var(--font-sans)',
-                      letterSpacing: '0.05em'
-                    }}>
-                      {initials}
-                    </div>
+                    {/* 议员头像 */}
+                    <Avatar
+                      name={trade.politician}
+                      party={trade.party === 'Democratic' ? 'D' : 'R'}
+                      size={60}
+                    />
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
@@ -1273,19 +1242,10 @@ export const WhalesSimple: React.FC = () => {
             <br />
             每 24 小时更新一次，仅供参考学习，不构成投资建议。
           </p>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '1.5rem',
-            fontSize: '0.75rem',
-            color: '#9ca3af',
-            marginTop: '1rem'
-          }}>
-            <a href="#" style={{ color: '#9ca3af', textDecoration: 'none' }}>关于我们</a>
-            <span>·</span>
-            <a href="#" style={{ color: '#9ca3af', textDecoration: 'none' }}>数据来源</a>
-            <span>·</span>
-            <a href="#" style={{ color: '#9ca3af', textDecoration: 'none' }}>免责声明</a>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', fontSize: '0.875rem', marginTop: '1rem' }}>
+            <a href="/about" style={{ color: '#9ca3af', textDecoration: 'none' }}>关于我们</a>
+            <a href="/about" style={{ color: '#9ca3af', textDecoration: 'none' }}>数据来源</a>
+            <a href="/terms" style={{ color: '#9ca3af', textDecoration: 'none' }}>免责声明</a>
           </div>
         </div>
       </div>

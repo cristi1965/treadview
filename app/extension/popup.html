@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>我不是神 · AI 研判助手</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">👑</div>
+        <div>
+          <h1 class="title" id="t-appTitle">我不是神 · AI 伴侣</h1>
+          <div class="status-badge" id="serverStatus">
+            <span class="status-dot"></span>
+            <span id="statusText">连接本地服务中…</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="langToggleBtn" class="lang-btn" title="切换中英文 / Switch Language">EN</button>
+        <a href="http://localhost:8765/multichart" target="_blank" class="icon-link" title="打开四分屏工作台">🖥️</a>
+      </div>
+    </header>
+
+    <!-- Search Bar -->
+    <div class="search-box">
+      <input type="text" id="symbolInput" placeholder="输入股票代码 (如 NVDA, 300750)…" autofocus autocomplete="off" />
+      <button id="searchBtn">查 询</button>
+    </div>
+
+    <!-- Quick Chips -->
+    <div class="chips-row">
+      <span class="chip" data-sym="NVDA">NVDA</span>
+      <span class="chip" data-sym="TSLA">TSLA</span>
+      <span class="chip" data-sym="PLTR">PLTR</span>
+      <span class="chip" data-sym="513100">513100纳指</span>
+      <span class="chip" data-sym="513500">513500标普</span>
+      <span class="chip" data-sym="01810">01810小米</span>
+      <span class="chip" data-sym="00700">00700腾讯</span>
+      <span class="chip" data-sym="300750">300750宁德</span>
+    </div>
+
+    <!-- Stock Content -->
+    <main id="stockContent" class="stock-content">
+      <!-- Stock Header -->
+      <div class="stock-header">
+        <div>
+          <div class="stock-name-row">
+            <span class="stock-name" id="stockName">英伟达</span>
+            <span class="stock-sym" id="stockSym">NVDA</span>
+          </div>
+          <div class="stock-tag" id="stockTag">👑 M7 · AI 算力总龙头</div>
+        </div>
+        <div class="stock-price-box">
+          <div class="price-val" id="stockPrice">$200.75</div>
+          <div class="price-pct text-up" id="stockPct">+2.93%</div>
+        </div>
+      </div>
+
+      <!-- Dark Pool Flow Bar (Benchmarked from Unusual Whales) -->
+      <div class="darkpool-flow">
+        <span class="dp-tag">🕵️ <span id="t-flowLabel">暗盘大单</span></span>
+        <span class="dp-text" id="t-flowVal">64% 多头买单主力沉淀 · $25M+ 净流入</span>
+      </div>
+
+      <!-- 5-God Score Grid -->
+      <div class="section-title" id="t-godsTitle">👑 五神多方打分</div>
+      <div class="gods-grid">
+        <div class="god-card">
+          <div class="god-name" id="t-buffett">巴菲特</div>
+          <div class="god-score" id="scoreBuffett">68</div>
+        </div>
+        <div class="god-card">
+          <div class="god-name" id="t-duan">段永平</div>
+          <div class="god-score" id="scoreDuan">95</div>
+        </div>
+        <div class="god-card">
+          <div class="god-name" id="t-serenity">Serenity</div>
+          <div class="god-score" id="scoreSerenity">72</div>
+        </div>
+        <div class="god-card">
+          <div class="god-name" id="t-druck">德鲁肯</div>
+          <div class="god-score" id="scoreDruck">92</div>
+        </div>
+        <div class="god-card">
+          <div class="god-name" id="t-sentiment">情绪面</div>
+          <div class="god-score" id="scoreSentiment">88</div>
+        </div>
+      </div>
+
+      <!-- AI S/R Pivots -->
+      <div class="section-title" id="t-pivotsTitle">🎯 AI 关键多空点位</div>
+      <div class="pivots-row">
+        <div class="pivot-pill pivot-s2">
+          <span class="p-label" id="t-s2Label">强支撑 S2</span>
+          <span class="p-val" id="pivotS2">$183.08</span>
+        </div>
+        <div class="pivot-pill pivot-s1">
+          <span class="p-label" id="t-s1Label">第一支撑 S1</span>
+          <span class="p-val" id="pivotS1">$192.32</span>
+        </div>
+        <div class="pivot-pill pivot-r1">
+          <span class="p-label" id="t-r1Label">第一阻力 R1</span>
+          <span class="p-val" id="pivotR1">$209.18</span>
+        </div>
+        <div class="pivot-pill pivot-r2">
+          <span class="p-label" id="t-r2Label">目标阻力 R2</span>
+          <span class="p-val" id="pivotR2">$219.82</span>
+        </div>
+      </div>
+
+      <!-- Verdict Banner -->
+      <div class="verdict-banner" id="verdictBanner">
+        <div class="verdict-title"><span id="t-verdictPrefix">🌙 此刻买入结论: </span><span id="verdictHeadline" class="text-accent">逢低分批关注</span></div>
+        <div class="verdict-detail" id="verdictDetail">
+          算力需求极强，大单净流入偏多，回调至 S1 支撑位附近为胜率较高的观察点。
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions-row">
+        <a id="btnStockDetail" href="http://localhost:8765/stock/NVDA" target="_blank" class="btn btn-primary">
+          <span id="t-btnDetail">🚀 深度分析</span>
+        </a>
+        <a id="btnTradingView" href="https://www.tradingview.com/symbols/NASDAQ-NVDA/" target="_blank" class="btn btn-secondary">
+          <span id="t-btnTradingView">📈 TradingView</span>
+        </a>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <a href="http://localhost:8765/" target="_blank">主站</a>
+      <span>·</span>
+      <a href="http://localhost:8765/multichart" target="_blank">四分屏</a>
+      <span>·</span>
+      <a href="http://localhost:8765/portfolio" target="_blank">我的自选</a>
+    </footer>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

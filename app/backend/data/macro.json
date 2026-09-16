@@ -1,1 +1,103 @@
-{"series":[{"sym":"^TNX","name":"美债 10Y","kind":"rate","price":4.663,"pct":0.89},{"sym":"^IRX","name":"美债 13W","kind":"rate","price":3.675,"pct":0.46},{"sym":"^FVX","name":"美债 5Y","kind":"rate","price":4.375,"pct":0.53},{"sym":"^TYX","name":"美债 30Y","kind":"rate","price":5.208,"pct":1.26},{"sym":"^GSPC","name":"标普 500","kind":"index","price":7437.63,"pct":1.66},{"sym":"^IXIC","name":"纳斯达克","kind":"index","price":25122.18,"pct":2.78},{"sym":"^DJI","name":"道琼斯","kind":"index","price":52208.06,"pct":1.19},{"sym":"^RUT","name":"罗素 2000","kind":"index","price":2946.1,"pct":1.37},{"sym":"^VIX","name":"VIX 恐慌","kind":"vol","price":16.88,"pct":-1.23},{"sym":"DX-Y.NYB","name":"美元指数","kind":"fx","price":100.167,"pct":0.16},{"sym":"GC=F","name":"黄金","kind":"commodity","price":4129.0,"pct":0.7},{"sym":"CL=F","name":"原油 WTI","kind":"commodity","price":82.59,"pct":-1.2},{"sym":"BTC-USD","name":"比特币","kind":"crypto","price":63897.69,"pct":-1.28},{"sym":"ETH-USD","name":"以太坊","kind":"crypto","price":1887.35,"pct":-1.57}],"ts":1785484161411}
+{
+  "series": [
+    {
+      "sym": "^TNX",
+      "name": "美国 10 年期国债收益率",
+      "kind": "rate",
+      "price": 4.996,
+      "pct": 3.2871614637171946
+    },
+    {
+      "sym": "^IRX",
+      "name": "美国 13 周国债收益率",
+      "kind": "rate",
+      "price": 3.96,
+      "pct": 4.073587385019706
+    },
+    {
+      "sym": "^FVX",
+      "name": "美国 5 年期国债收益率",
+      "kind": "rate",
+      "price": 4.826,
+      "pct": 4.594711746857385
+    },
+    {
+      "sym": "^TYX",
+      "name": "美国 30 年期国债收益率",
+      "kind": "rate",
+      "price": 5.364,
+      "pct": 1.4755959137343984
+    },
+    {
+      "sym": "SPY",
+      "name": "标普 500 ETF 代理",
+      "kind": "asset",
+      "price": 757.39,
+      "pct": -1.1188573815865122
+    },
+    {
+      "sym": "QQQ",
+      "name": "纳斯达克 100 ETF 代理",
+      "kind": "asset",
+      "price": 704.54,
+      "pct": -1.923826493680056
+    },
+    {
+      "sym": "DIA",
+      "name": "道琼斯 ETF 代理",
+      "kind": "asset",
+      "price": 521.23,
+      "pct": -1.2878056171050802
+    },
+    {
+      "sym": "IWM",
+      "name": "罗素 2000 ETF 代理",
+      "kind": "asset",
+      "price": 285.14,
+      "pct": -3.2341263107883496
+    },
+    {
+      "sym": "^VIX",
+      "name": "CBOE VIX",
+      "kind": "index",
+      "price": 17.2,
+      "pct": 4.495747266099626
+    },
+    {
+      "sym": "DX-Y.NYB",
+      "name": "美元指数",
+      "kind": "index",
+      "price": 99.703,
+      "pct": 0.6186295287112721
+    },
+    {
+      "sym": "GLD",
+      "name": "黄金 ETF 代理",
+      "kind": "asset",
+      "price": 394.15,
+      "pct": -1.3934754328029744
+    },
+    {
+      "sym": "USO",
+      "name": "原油 ETF 代理",
+      "kind": "asset",
+      "price": 161.86,
+      "pct": 10.84023830719716
+    },
+    {
+      "sym": "BTC-USD",
+      "name": "比特币",
+      "kind": "asset",
+      "price": 75683.5,
+      "pct": -2.0537858770627397
+    },
+    {
+      "sym": "ETH-USD",
+      "name": "以太坊",
+      "kind": "asset",
+      "price": 2397.33,
+      "pct": -5.091742708846421
+    }
+  ],
+  "ts": 1789498793000
+}

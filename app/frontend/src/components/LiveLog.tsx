@@ -1,10 +1,16 @@
 import React, { useEffect, useRef } from 'react'
+import { useI18n } from '../i18n'
+import { useUiStore } from '../stores/uiStore'
+import type { ConsoleLog } from '../utils/analysisLog'
+import { formatConsoleLog } from '../utils/analysisLog'
 
 interface LiveLogProps {
-  logs: string[]
+  logs: ConsoleLog[]
 }
 
 export const LiveLog: React.FC<LiveLogProps> = ({ logs }) => {
+  const { t } = useI18n()
+  const view = useUiStore((s) => s.reportView)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -16,17 +22,17 @@ export const LiveLog: React.FC<LiveLogProps> = ({ logs }) => {
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '240px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ fontSize: '1rem', color: 'white', fontWeight: 600 }}>System Console Stream</h3>
-        <span style={{ 
-          fontSize: '0.7rem', 
-          color: 'var(--color-info)', 
-          fontFamily: varMono() 
+        <h3 style={{ fontSize: '1rem', color: 'white', fontWeight: 600 }}>{t('log.title')}</h3>
+        <span style={{
+          fontSize: '0.7rem',
+          color: 'var(--color-info)',
+          fontFamily: varMono()
         }}>
-          LIVE FEED
+          {t('log.live')}
         </span>
       </div>
 
-      <div 
+      <div
         ref={containerRef}
         style={{
           flex: 1,
@@ -46,20 +52,25 @@ export const LiveLog: React.FC<LiveLogProps> = ({ logs }) => {
       >
         {logs.length === 0 ? (
           <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            System idle. Awaiting instruction...
+            {t('log.idle')}
           </div>
         ) : (
-          logs.map((log, idx) => (
-            <div key={idx} style={{ 
-              color: log.includes('Error') 
-                ? 'var(--color-danger)' 
-                : log.includes('✅') 
-                  ? '#a7f3d0' 
-                  : '#34d399' 
-            }}>
-              {log}
-            </div>
-          ))
+          logs.map((log, idx) => {
+            const text = formatConsoleLog(log, view)
+            const isErr = log.kind === 'error' || log.kind === 'start_fail' || log.kind === 'stop_fail'
+            const isOk = log.kind === 'node_complete' || log.kind === 'done'
+            return (
+              <div key={idx} style={{
+                color: isErr
+                  ? 'var(--color-danger)'
+                  : isOk
+                    ? '#a7f3d0'
+                    : '#34d399'
+              }}>
+                {text}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

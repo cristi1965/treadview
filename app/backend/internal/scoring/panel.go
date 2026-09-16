@@ -37,45 +37,88 @@ type UsStocksFile struct {
 }
 
 type PanelStock struct {
-	SC  []int `json:"sc"`
-	Div int   `json:"div"`
+	SC     []int        `json:"sc"`
+	Div    int          `json:"div"`
+	Detail *ScoreDetail `json:"detail,omitempty"`
 }
 
 type PanelFile struct {
-	Order       []string              `json:"order"`
-	GeneratedAt string                `json:"generated_at,omitempty"`
-	Source      string                `json:"source,omitempty"`
-	Count       int                   `json:"count,omitempty"`
-	Stocks      map[string]PanelStock `json:"stocks"`
+	Order          []string              `json:"order"`
+	GeneratedAt    string                `json:"generated_at,omitempty"`
+	Source         string                `json:"source,omitempty"`
+	MethodVersion  string                `json:"method_version,omitempty"`
+	Count          int                   `json:"count,omitempty"`
+	Stocks         map[string]PanelStock `json:"stocks"`
+	Validation     ValidationReport      `json:"validation"`
+	MarketSubmodel *PriceModelReport     `json:"market_submodel,omitempty"`
 }
+
+// ScoreInputs are the exact snapshot fields consumed by the heuristic scorer.
+type ScoreInputs struct {
+	Symbol     string  `json:"symbol"`
+	Name       string  `json:"name"`
+	Sector     string  `json:"sector"`
+	Industry   string  `json:"industry"`
+	Segment    string  `json:"segment"`
+	Sub        string  `json:"sub"`
+	Price      float64 `json:"price"`
+	DayPct     float64 `json:"day_pct"`
+	MarketCapB float64 `json:"market_cap_b"`
+	Volume     float64 `json:"volume"`
+}
+
+// ScoreDetail is sufficient to reproduce the heuristic and deterministic scaling.
+type ScoreDetail struct {
+	MethodVersion        string                      `json:"method_version"`
+	Inputs               ScoreInputs                 `json:"inputs"`
+	Components           map[string][]ScoreComponent `json:"components"`
+	RawScores            []int                       `json:"raw_scores"`
+	FinalScores          []int                       `json:"final_scores"`
+	PanelScores          []int                       `json:"panel_scores"`
+	ReproducesPanel      bool                        `json:"reproduces_panel"`
+	DeterministicScaling string                      `json:"deterministic_scaling"`
+}
+
+// ScoreComponent records one deterministic rule contribution to a raw factor score.
+type ScoreComponent struct {
+	Rule  string  `json:"rule"`
+	Value float64 `json:"value"`
+}
+
+const HeuristicMethodVersion = "stockgod-five-factor-heuristic-v2"
+
+const DeterministicScalingDisclosure = "deterministic scaling: round(target[i] + (raw[i] - 55) * 0.65), targets=[36.5,37.7,32.8,45.8,41.2], clamp=5..95; not historical calibration"
 
 // BuildPanel computes five-factor scores for every row in the universe.
 func BuildPanel(stocks []UsStockRow) *PanelFile {
 	return BuildPanelOpts(stocks, true)
 }
 
-// BuildPanelOpts computes scores; calibrate=true pulls toward original site distribution.
-func BuildPanelOpts(stocks []UsStockRow, calibrate bool) *PanelFile {
+// BuildPanelOpts computes scores; applyScaling=true applies a fixed, disclosed transform.
+func BuildPanelOpts(stocks []UsStockRow, applyScaling bool) *PanelFile {
 	src := "local-heuristic-v1"
-	if calibrate {
-		src = "local-heuristic-v2-calibrated"
+	if applyScaling {
+		src = "local-heuristic-v2-deterministic-scaling"
 	}
 	out := &PanelFile{
-		Order:       append([]string{}, PanelOrder...),
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Source:      src,
-		Stocks:      make(map[string]PanelStock, len(stocks)),
+		Order:         append([]string{}, PanelOrder...),
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		Source:        src,
+		MethodVersion: HeuristicMethodVersion,
+		Stocks:        make(map[string]PanelStock, len(stocks)),
+		Validation: ValidationReport{
+			Status: "unvalidated", Method: "strict-time-split-v1",
+			Benchmark: "benchmark-adjusted forward return; majority-direction baseline",
+			Reasons:   []string{"no point-in-time historical score and market-cap snapshots with forward benchmark returns were supplied"},
+		},
 	}
 	for _, s := range stocks {
 		sym := strings.TrimSpace(strings.ToUpper(s.Sym))
 		if sym == "" {
 			continue
 		}
-		sc := ScoreFive(s)
-		if calibrate {
-			sc = CalibrateHeuristicTowardOriginal(sc)
-		}
-		out.Stocks[sym] = PanelStock{SC: sc, Div: Divergence(sc)}
+		detail := ExplainFive(s, applyScaling)
+		out.Stocks[sym] = PanelStock{SC: detail.FinalScores, Div: Divergence(detail.FinalScores), Detail: &detail}
 	}
 	out.Count = len(out.Stocks)
 	return out
@@ -99,130 +142,207 @@ func EnrichIndustry(stocks []UsStockRow) (filled int) {
 	return filled
 }
 
-// ScoreFive returns [buffett, duan, serenity, druck, sentiment] in 0..100.
+// ScoreFive returns [buffett, duan, serenity, druck, sentiment] before deterministic scaling.
 func ScoreFive(s UsStockRow) []int {
+	return scoreFiveRaw(s)
+}
+
+// ExplainFive captures the exact inputs and pre/post-scaling values used by the scorer.
+func ExplainFive(s UsStockRow, applyScaling bool) ScoreDetail {
+	raw, components := scoreFiveExplained(s)
+	final := append([]int{}, raw...)
+	scaling := "none"
+	if applyScaling {
+		final = ScaleHeuristicDeterministically(raw)
+		scaling = DeterministicScalingDisclosure
+	}
+	return ScoreDetail{
+		MethodVersion: HeuristicMethodVersion,
+		Inputs: ScoreInputs{
+			Symbol: strings.ToUpper(strings.TrimSpace(s.Sym)), Name: s.Name, Sector: s.Sector,
+			Industry: s.Industry, Segment: s.Seg, Sub: s.Sub, Price: s.Price,
+			DayPct: s.Pct, MarketCapB: s.McapB, Volume: s.Vol,
+		},
+		Components: components, RawScores: raw, FinalScores: final, PanelScores: append([]int{}, final...),
+		ReproducesPanel: true, DeterministicScaling: scaling,
+	}
+}
+
+// EnsureDeterministicScalingDisclosure upgrades legacy naming only when the
+// stored raw inputs reproduce both final and panel scores. It never upgrades
+// validation status or guesses missing score evidence.
+func (p *PanelFile) EnsureDeterministicScalingDisclosure() {
+	if p == nil {
+		return
+	}
+	if p.Source == "local-heuristic-v2-calibrated" {
+		p.Source = "local-heuristic-v2-deterministic-scaling"
+	}
+	for symbol, row := range p.Stocks {
+		if row.Detail == nil || row.Detail.DeterministicScaling != "" || row.Detail.MethodVersion != HeuristicMethodVersion {
+			continue
+		}
+		expected := ScaleHeuristicDeterministically(row.Detail.RawScores)
+		if !samePanelScores(expected, row.Detail.FinalScores) || !samePanelScores(row.Detail.FinalScores, row.SC) {
+			continue
+		}
+		row.Detail.DeterministicScaling = DeterministicScalingDisclosure
+		row.Detail.PanelScores = append([]int(nil), row.SC...)
+		row.Detail.ReproducesPanel = true
+		p.Stocks[symbol] = row
+	}
+}
+
+func samePanelScores(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func scoreFiveRaw(s UsStockRow) []int {
+	raw, _ := scoreFiveExplained(s)
+	return raw
+}
+
+func scoreFiveExplained(s UsStockRow) ([]int, map[string][]ScoreComponent) {
 	hay := strings.ToLower(s.Sector + " " + s.Industry + " " + s.Seg + " " + s.Sub + " " + s.Name)
 	mcap := s.McapB
 	pct := s.Pct
 	absPct := math.Abs(pct)
+	components := map[string][]ScoreComponent{}
+	add := func(factor, rule string, target *float64, value float64) {
+		*target += value
+		components[factor] = append(components[factor], ScoreComponent{Rule: rule, Value: value})
+	}
 
 	// --- Buffett: durable economics + valuation caution ---
-	buffett := 48.0
+	buffett := 0.0
+	add("buffett", "base", &buffett, 48)
 	switch {
 	case containsAny(hay, "consumer defensive", "staples", "必需消费", "beverage", "household"):
-		buffett += 18
+		add("buffett", "durable-consumer", &buffett, 18)
 	case containsAny(hay, "healthcare", "医疗", "insurance", "bank", "financial", "金融"):
-		buffett += 14
+		add("buffett", "healthcare-or-financial", &buffett, 14)
 	case containsAny(hay, "utilities", "公用", "railroad", "industrial conglomerate"):
-		buffett += 10
+		add("buffett", "utility-or-durable-industrial", &buffett, 10)
 	case containsAny(hay, "software", "internet", "platform", "semiconductor", "科技"):
-		buffett += 8
+		add("buffett", "technology-franchise", &buffett, 8)
 	case containsAny(hay, "biotech", "oil", "mining", "crypto", "spac"):
-		buffett -= 10
+		add("buffett", "cyclical-or-speculative", &buffett, -10)
 	}
 	if mcap >= 200 {
-		buffett += 8
+		add("buffett", "market-cap>=200B", &buffett, 8)
 	} else if mcap >= 50 {
-		buffett += 4
+		add("buffett", "market-cap>=50B", &buffett, 4)
 	} else if mcap > 0 && mcap < 2 {
-		buffett -= 12
+		add("buffett", "market-cap<2B", &buffett, -12)
 	}
 	// Crowded mega-growth without margin of safety
 	if mcap >= 500 && absPct > 2.5 {
-		buffett -= 6
+		add("buffett", "mega-cap-high-daily-move", &buffett, -6)
 	}
 	if absPct > 8 {
-		buffett -= 8
+		add("buffett", "absolute-daily-move>8pct", &buffett, -8)
 	}
 
 	// --- Duan: clean business model / brand / platform ---
-	duan := 50.0
+	duan := 0.0
+	add("duan", "base", &duan, 50)
 	switch {
 	case containsAny(hay, "software", "internet content", "interactive media", "platform", "consumer electronics"):
-		duan += 22
+		add("duan", "platform-or-consumer-electronics", &duan, 22)
 	case containsAny(hay, "semiconductor", "ai算力", "gpu", "fabless"):
-		duan += 18
+		add("duan", "semiconductor-or-ai-compute", &duan, 18)
 	case containsAny(hay, "beverage", "restaurant", "apparel", "footwear", "luxury", "brand"):
-		duan += 14
+		add("duan", "consumer-brand", &duan, 14)
 	case containsAny(hay, "banks", "insurance", "asset management"):
-		duan += 6
+		add("duan", "financial-franchise", &duan, 6)
 	case containsAny(hay, "biotech", "exploration", "coal", "steel"):
-		duan -= 12
+		add("duan", "complex-or-cyclical-business", &duan, -12)
 	}
 	if mcap >= 100 {
-		duan += 6
+		add("duan", "market-cap>=100B", &duan, 6)
 	}
 	if pct < -6 {
-		duan -= 4 // model ok but narrative broken short-term — mild
+		add("duan", "daily-return<-6pct", &duan, -4)
 	}
 
 	// --- Serenity: bottleneck / underfollowed alpha ---
-	serenity := 52.0
+	serenity := 0.0
+	add("serenity", "base", &serenity, 52)
 	switch {
 	case containsAny(hay, "semiconductor equipment", "electronic components", "copper", "equipment", "materials", "industrial machinery", "electrical equipment"):
-		serenity += 18
+		add("serenity", "bottleneck-equipment-or-material", &serenity, 18)
 	case containsAny(hay, "communication equipment", "electronic manufacturing", "packaging", "memory", "hbm"):
-		serenity += 14
+		add("serenity", "supply-chain-bottleneck", &serenity, 14)
 	case containsAny(hay, "software—infrastructure", "software - infrastructure", "cloud"):
-		serenity += 4
+		add("serenity", "cloud-infrastructure", &serenity, 4)
 	}
 	if mcap >= 800 {
-		serenity -= 22 // too crowded / no edge
+		add("serenity", "market-cap>=800B", &serenity, -22)
 	} else if mcap >= 300 {
-		serenity -= 12
+		add("serenity", "market-cap>=300B", &serenity, -12)
 	} else if mcap >= 5 && mcap <= 80 {
-		serenity += 10 // sweet spot
+		add("serenity", "market-cap-5B-to-80B", &serenity, 10)
 	} else if mcap > 0 && mcap < 1 {
-		serenity -= 8
+		add("serenity", "market-cap<1B", &serenity, -8)
 	}
 	if containsAny(hay, "nvidia", "apple", "microsoft", "alphabet", "amazon", "meta platforms", "tesla") {
-		serenity -= 10
+		add("serenity", "mega-cap-crowding", &serenity, -10)
 	}
 
 	// --- Druckenmiller: trend / liquidity / macro beta ---
-	druck := 50.0
-	druck += clamp(pct*3.2, -22, 28)
+	druck := 0.0
+	add("druckenmiller", "base", &druck, 50)
+	add("druckenmiller", "clamp(day_pct*3.2,-22,28)", &druck, clamp(pct*3.2, -22, 28))
 	if containsAny(hay, "technology", "communication", "semiconductor", "software", "internet", "科技", "通信") {
-		druck += 8
+		add("druckenmiller", "technology-or-communication", &druck, 8)
 	}
 	if containsAny(hay, "utilities", "staples", "reit") && pct < 1 {
-		druck -= 6
+		add("druckenmiller", "defensive-sector-and-return<1pct", &druck, -6)
 	}
 	if mcap >= 50 {
-		druck += 4 // can take size
+		add("druckenmiller", "market-cap>=50B", &druck, 4)
 	}
 	if s.Vol > 0 && mcap > 0 {
 		// crude attention: dollar volume proxy
 		dvol := s.Vol * math.Max(s.Price, 1) / 1e9 // ~$B traded
 		if dvol > 2 {
-			druck += 6
+			add("druckenmiller", "dollar-volume>2B", &druck, 6)
 		} else if dvol < 0.05 {
-			druck -= 8
+			add("druckenmiller", "dollar-volume<0.05B", &druck, -8)
 		}
 	}
 
 	// --- Sentiment: crowding / reverse heat ---
-	sent := 55.0
+	sent := 0.0
+	add("sentiment", "base", &sent, 55)
 	if pct >= 6 {
-		sent -= 18
+		add("sentiment", "daily-return>=6pct", &sent, -18)
 	} else if pct >= 3 {
-		sent -= 10
+		add("sentiment", "daily-return>=3pct", &sent, -10)
 	} else if pct <= -6 {
-		sent += 16
+		add("sentiment", "daily-return<=-6pct", &sent, 16)
 	} else if pct <= -3 {
-		sent += 8
+		add("sentiment", "daily-return<=-3pct", &sent, 8)
 	}
 	if mcap >= 500 {
-		sent -= 10
+		add("sentiment", "market-cap>=500B", &sent, -10)
 	}
 	if containsAny(hay, "nvidia", "tesla", "coinbase", "microstrategy") {
-		sent -= 8
+		add("sentiment", "crowded-symbol", &sent, -8)
 	}
 	if s.Vol > 80_000_000 && pct > 2 {
-		sent -= 8
+		add("sentiment", "volume>80M-and-return>2pct", &sent, -8)
 	}
 	if absPct < 0.8 && mcap >= 20 {
-		sent += 4 // calm tape
+		add("sentiment", "calm-tape-and-market-cap>=20B", &sent, 4)
 	}
 
 	scores := []int{
@@ -232,7 +352,7 @@ func ScoreFive(s UsStockRow) []int {
 		clampInt(int(math.Round(druck)), 5, 95),
 		clampInt(int(math.Round(sent)), 5, 95),
 	}
-	return scores
+	return scores, components
 }
 
 func Divergence(sc []int) int {

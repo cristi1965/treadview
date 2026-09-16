@@ -1,9 +1,10 @@
 ---
 name: verify-local-quotes
 description: >-
-  Verify local StockGod/TradingAgents market APIs after quote or stocks changes.
-  Use when validating /api/market, /api/quote, /api/stocks, freshness of RKLB/NVDA,
-  or before claiming data bugs are fixed.
+  Verify local StockGod/TradingAgents market APIs and data freshness after quote,
+  stocks, market snapshot, cache, macro, ETF, or reports changes. Use when
+  validating /api/market, /api/quote, /api/stocks, RKLB/NVDA freshness,
+  no-store headers, or before claiming data bugs are fixed.
 ---
 
 # Verify local quotes
@@ -17,7 +18,14 @@ description: >-
 ./scripts/verify-local.sh
 ```
 
-3. If script fails, check in order:
+3. For data freshness, cache headers, or stale UI claims, also run:
+
+```bash
+node misc/recovery-tools/audit-data-freshness.mjs
+BASE_URL=http://127.0.0.1:8765 node misc/recovery-tools/audit-data-freshness.mjs --api
+```
+
+4. If a script fails, check in order:
    - Process is latest binary (`go build -o /tmp/tradingagents-backend .`)
    - CWD when starting is `app/backend`
    - `app/frontend/public/data/us-stocks.json` `generated_at`
@@ -34,3 +42,5 @@ curl -s 'http://127.0.0.1:8765/api/quote?syms=RKLB,NVDA'
 - `/api/market` `X-Data-Source` starts with `us-stocks`
 - `/api/stocks?market=cn` symbols are numeric A-share codes
 - Reports body has zero `我不是股神`
+- `/api/*` and `/data/*` data responses use `Cache-Control: no-store` when freshness/cache was changed
+- Known stale source files are reported explicitly instead of hidden by UI or browser cache

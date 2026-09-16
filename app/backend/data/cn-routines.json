@@ -1,0 +1,152 @@
+{
+  "updated": "2026-08-12",
+  "disclaimer": "以下为机械规则与仓位约束工具，用于自我约束与提醒，不是稳赚承诺，更不是投资建议。失业/生活费紧张时：先留足 6–12 个月现金，只用「闲钱」；单笔失败也应睡得着。",
+  "profile": {
+    "id": "steady_future",
+    "name": "稳健跟上时代",
+    "audience": "不求暴利、希望收益风险比友好、保留未来弹性",
+    "cash_floor_pct": 20,
+    "core_etf_target_pct": 55,
+    "satellite_max_pct": 15,
+    "single_name_max_pct": 8,
+    "theme_stock_max_pct": 5,
+    "max_deploy_per_week_pct": 5,
+    "rules": [
+      "现金缓冲 ≥20%，先生活后投资",
+      "底仓以宽基 ETF 为主（300/500），主题仓合计 ≤15%",
+      "单只个股 ≤8%，且只在回调窗口分批",
+      "主题 ETF/成长票：只做小仓波段，必须设减仓与止损价",
+      "每周最多新投入总资产约 5%，避免一次梭哈",
+      "涨多先减仓留本，不赌「还会更高」"
+    ]
+  },
+  "routines": [
+    {
+      "id": "wide_dca",
+      "name": "宽基网格定投",
+      "style": "稳健底仓",
+      "horizon": "3–10年",
+      "risk": "low",
+      "why": "用沪深300/中证500 跟上经济与龙头；网格在跌时多买、涨时少买/轻减，降低择时压力。",
+      "symbols": [
+        { "symbol": "510300", "name": "沪深300ETF", "role": "core", "weight_hint": 35 },
+        { "symbol": "510500", "name": "中证500ETF", "role": "core", "weight_hint": 20 }
+      ],
+      "buy_pcts": [-1.0, -2.5, -5.0],
+      "sell_pcts": [5.0, 10.0],
+      "trim_fractions": [0.15, 0.25],
+      "stop_pct": null,
+      "signal": {
+        "buy_if_day_pct_lte": -1.2,
+        "pause_buy_if_day_pct_gte": 2.0,
+        "prefer_cool": true
+      },
+      "playbook": [
+        "固定发薪日定额买一点（例：闲钱的 2–3%）",
+        "跌破网格买点再加一笔，单次不超过周额度",
+        "触及卖点只减仓留本，不空仓赌顶"
+      ],
+      "dip_alerts": {
+        "yellow": { "day_pct": -1.5, "label": "回调观察", "action": "留意盘中走势，别急" },
+        "orange": { "day_pct": -2.5, "label": "跳水警告", "action": "检查网格买点，准备分批" },
+        "red":    { "day_pct": -4.0, "label": "恐慌跳水", "action": "触及深跌网格，可加仓但单次≤周额度" }
+      }
+    },
+    {
+      "id": "core_satellite",
+      "name": "核心+卫星（时代仓）",
+      "style": "稳健成长",
+      "horizon": "1–5年",
+      "risk": "medium",
+      "why": "核心宽基求稳；卫星用科创/半导体/AI ETF 小仓参与产业结构升级，避免单票押注。",
+      "symbols": [
+        { "symbol": "510300", "name": "沪深300ETF", "role": "core", "weight_hint": 40 },
+        { "symbol": "588000", "name": "科创50ETF", "role": "satellite", "weight_hint": 8 },
+        { "symbol": "512480", "name": "半导体ETF", "role": "satellite", "weight_hint": 7 }
+      ],
+      "buy_pcts": [-1.5, -3.0, -6.0],
+      "sell_pcts": [6.0, 12.0],
+      "trim_fractions": [0.2, 0.3],
+      "stop_pct": -10.0,
+      "signal": {
+        "buy_if_day_pct_lte": -1.5,
+        "pause_buy_if_day_pct_gte": 2.5,
+        "satellite_only_if_day_pct_lte": -2.0
+      },
+      "playbook": [
+        "先把核心宽基买到目标附近，再开卫星",
+        "卫星只在明显回调日加仓；大涨日不加卫星",
+        "卫星触及止损线：先砍到仓位上限一半，复盘后再说"
+      ],
+      "dip_alerts": {
+        "yellow": { "day_pct": -2.0, "label": "卫星回调", "action": "核心持有不动，卫星留意" },
+        "orange": { "day_pct": -3.5, "label": "跳水预警", "action": "检查卫星止损线，核心可考虑小额加仓" },
+        "red":    { "day_pct": -5.0, "label": "大幅跳水", "action": "卫星先执行止损保护，核心对照深跌买点" }
+      }
+    },
+    {
+      "id": "moat_dip",
+      "name": "护城河回调分批",
+      "style": "质量优先",
+      "horizon": "2–8年",
+      "risk": "medium",
+      "why": "好生意偶尔打折才动手；不追热、不梭哈。适合「有未来」的龙头，但仍可能长期横盘。",
+      "symbols": [
+        { "symbol": "600519", "name": "贵州茅台", "role": "quality", "weight_hint": 5 },
+        { "symbol": "600036", "name": "招商银行", "role": "quality", "weight_hint": 5 },
+        { "symbol": "300750", "name": "宁德时代", "role": "quality", "weight_hint": 4 },
+        { "symbol": "002371", "name": "北方华创", "role": "quality", "weight_hint": 3 }
+      ],
+      "buy_pcts": [-2.0, -4.0, -7.0],
+      "sell_pcts": [8.0, 15.0],
+      "trim_fractions": [0.2, 0.35],
+      "stop_pct": -12.0,
+      "signal": {
+        "buy_if_day_pct_lte": -2.0,
+        "pause_buy_if_day_pct_gte": 3.0,
+        "max_heat": 68
+      },
+      "playbook": [
+        "仅当当日跌幅或网格买点触发时分批，单只 ≤8%",
+        "过热（脉冲 heat 过高）不新开仓",
+        "大涨只减仓兑现部分利润，留底仓看长期"
+      ],
+      "dip_alerts": {
+        "yellow": { "day_pct": -2.5, "label": "龙头回调", "action": "检查是利空还是大盘拖累" },
+        "orange": { "day_pct": -4.5, "label": "异常跳水", "action": "查新闻 · 无基本面恶化则对照买点分批" },
+        "red":    { "day_pct": -7.0, "label": "极端跳水", "action": "止损线在眼前，先砍后买" }
+      }
+    },
+    {
+      "id": "theme_band",
+      "name": "主题小仓波段",
+      "style": "弹性卫星",
+      "horizon": "数周–数年",
+      "risk": "high",
+      "why": "用 AI/半导体主题 ETF 跟上时代，但仓位严格封顶；买卖点预先写死，避免情绪决策。",
+      "symbols": [
+        { "symbol": "159819", "name": "人工智能ETF", "role": "theme", "weight_hint": 6 },
+        { "symbol": "512760", "name": "芯片ETF", "role": "theme", "weight_hint": 5 },
+        { "symbol": "515790", "name": "光伏ETF", "role": "theme", "weight_hint": 4 }
+      ],
+      "buy_pcts": [-2.5, -5.0, -8.0],
+      "sell_pcts": [6.0, 12.0],
+      "trim_fractions": [0.25, 0.4],
+      "stop_pct": -8.0,
+      "signal": {
+        "buy_if_day_pct_lte": -2.5,
+        "pause_buy_if_day_pct_gte": 2.0
+      },
+      "playbook": [
+        "主题合计仓位建议 ≤15%，宁缺毋滥",
+        "先设卖点与止损提醒，再买",
+        "连续大涨后只许减、不许加"
+      ],
+      "dip_alerts": {
+        "yellow": { "day_pct": -2.0, "label": "主题回调", "action": "不追 · 不加 · 等确认" },
+        "orange": { "day_pct": -4.0, "label": "主题跳水", "action": "检查止损线(-8%) · 考虑砍半仓" },
+        "red":    { "day_pct": -6.0, "label": "主题崩溃", "action": "立即执行止损 · 主题仓清零，保命" }
+      }
+    }
+  ]
+}

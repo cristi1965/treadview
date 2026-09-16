@@ -13,6 +13,16 @@ func NewUnavailableClient(reason string) LLMClient {
 	return &unavailableClient{reason: reason}
 }
 
+func UnavailableReason(client LLMClient) (string, bool) {
+	if client == nil {
+		return "LLM client is not configured", true
+	}
+	if unavailable, ok := client.(*unavailableClient); ok {
+		return unavailable.err().Error(), true
+	}
+	return "", false
+}
+
 func (c *unavailableClient) GenerateWithTools(
 	ctx context.Context,
 	systemPrompt string,

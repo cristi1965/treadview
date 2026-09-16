@@ -1,6 +1,6 @@
-import { FiveFactorScores, Stock } from '../types/stocks';
+import { FiveFactorScores, ScoreDetail, ScoreValidation, Stock } from '../types/stocks';
 import { ETFCategory, ETFSector } from '../types/etf';
-import { apiUrl } from './api';
+import { apiUrl, getWithMeta } from './api';
 
 /** Same-origin `/data/*` (Vite public / Go dist). Falls back to API host if needed. */
 export async function fetchDataJson<T>(path: string): Promise<T> {
@@ -35,14 +35,24 @@ interface UsStocksFile {
   stocks: RawUsStock[];
 }
 
+interface MarketLiveFile {
+  quotes?: Record<string, { price: number; pct: number; vol?: number; mcapB?: number }>;
+  ts?: number;
+  count?: number;
+}
+
 interface PanelStock {
   sc: number[];
   div: number;
+  detail?: ScoreDetail;
 }
 
 interface PanelFile {
   order: string[];
+  generated_at?: string;
+  source?: string;
   stocks: Record<string, PanelStock>;
+	validation?: ScoreValidation;
 }
 
 interface JudgmentFile {
@@ -128,6 +138,20 @@ const SUPER_TO_CATEGORY: Record<string, ETFCategory> = {
   其他: 'other',
 };
 
+const ETF_ANALYSES_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function assertFreshEtfAnalyses(data: EtfAnalysesFile) {
+  const updatedAt = Date.parse(data.updated || '');
+  if (!Number.isFinite(updatedAt)) {
+    throw new Error(`ETF analyses updated field invalid: ${data.updated || 'missing'}`);
+  }
+  const age = Date.now() - updatedAt;
+  if (age > ETF_ANALYSES_MAX_AGE_MS) {
+    const ageHours = Math.round(age / 36e5);
+    throw new Error(`ETF analyses stale: updated=${data.updated} age=${ageHours}h`);
+  }
+}
+
 let usStocksCache: Promise<Stock[]> | null = null;
 let usStocksCacheAt = 0;
 let aStocksCache: Promise<Stock[]> | null = null;
@@ -137,6 +161,7 @@ let etfCache: Promise<{
   categories: Record<ETFCategory, number>;
   etfs: EtfRaw[];
   total: number;
+  updated: string;
 }> | null = null;
 let etfCacheAt = 0;
 
@@ -200,16 +225,14 @@ function slugifySector(name: string): string {
 }
 
 async function loadPanelFile(): Promise<PanelFile> {
-  // Prefer self-built API panel; fall back to static bundle.
   try {
-    const res = await fetch(apiUrl('/api/panel-summary'));
-    if (res.ok) {
-      return (await res.json()) as PanelFile;
-    }
+    const result = await getWithMeta<PanelFile>('/api/panel-summary');
+    const hasProvenance = Boolean(result.meta.source && result.meta.dataTime && result.meta.dataTime !== 'unknown');
+    if (!result.meta.stale && hasProvenance && result.data.validation?.status === 'validated') return result.data;
   } catch {
     /* ignore */
   }
-  return fetchDataJson<PanelFile>('/data/us-panel-summary.json');
+  return { order: [], stocks: {} };
 }
 
 /** Drop in-memory US stocks cache (after panel refresh). */
@@ -222,29 +245,46 @@ export async function loadUsMarketStocks(): Promise<Stock[]> {
   if (!usStocksCache || !isFreshCache(usStocksCacheAt)) {
     usStocksCacheAt = Date.now();
     usStocksCache = (async () => {
-      const [us, panel, judgment, dilution] = await Promise.all([
+      // Kick backend live refresh (top caps); don't block first paint on full universe.
+      const [us, panel, judgment, dilution, marketLive] = await Promise.all([
         fetchDataJson<UsStocksFile>('/data/us-stocks.json'),
         loadPanelFile(),
         fetchDataJson<JudgmentFile>('/data/judgment-p0-us.json'),
         fetchDataJson<DilutionFile>('/data/dilution-flags.json'),
+        getWithMeta<MarketLiveFile>('/api/market').catch(() => null),
       ]);
+
+      const marketHasProvenance = Boolean(
+        marketLive?.meta.source && marketLive.meta.dataTime && marketLive.meta.dataTime !== 'unknown'
+      );
+      const marketUsable = Boolean(marketLive && !marketLive.meta.stale && marketHasProvenance);
+      const liveQuotes = marketUsable ? marketLive?.data.quotes || {} : {};
 
       return us.stocks.map((raw) => {
         const panelRow = panel.stocks[raw.sym];
-        const { scores, avgScore, divergence: computedDiv } = mapPanelScores(panelRow?.sc);
+		const validationUsable = panel.validation?.status === 'validated';
+		const { scores, avgScore, divergence: computedDiv } = mapPanelScores(validationUsable ? panelRow?.sc : undefined);
         const divergence = panelRow?.div ?? computedDiv;
         const p0 = judgment.p0[raw.sym];
+        const live = liveQuotes[raw.sym.toUpperCase()] || liveQuotes[raw.sym];
+        const price = live && live.price > 0 ? live.price : raw.price;
+        const pct = live && live.price > 0 ? live.pct : raw.pct;
+        let mcapB = raw.mcapB || 0;
+        if (live && live.price > 0) {
+          if (live.mcapB && live.mcapB > 0) mcapB = live.mcapB;
+          else if (raw.price > 0 && mcapB > 0) mcapB = mcapB * (price / raw.price);
+        }
         const postAnalysisChange =
-          typeof p0 === 'number' && p0 > 0 ? Number((((raw.price - p0) / p0) * 100).toFixed(2)) : undefined;
+          typeof p0 === 'number' && p0 > 0 ? Number((((price - p0) / p0) * 100).toFixed(2)) : undefined;
         const flag = dilution.flags[raw.sym];
 
         return {
           symbol: raw.sym,
           name: raw.name,
-          price: raw.price,
-          change: Number(((raw.price * raw.pct) / 100).toFixed(4)),
-          changePercent: raw.pct,
-          marketCap: (raw.mcapB || 0) * 1_000_000_000,
+          price,
+          change: Number(((price * pct) / 100).toFixed(4)),
+          changePercent: pct,
+          marketCap: mcapB * 1_000_000_000,
           volume: raw.vol || 0,
           sector: raw.sector || raw.seg || 'Unknown',
           scores,
@@ -252,7 +292,17 @@ export async function loadUsMarketStocks(): Promise<Stock[]> {
           divergence,
           postAnalysisChange,
           isWatched: false,
-          judged: Boolean(panelRow),
+		  judged: Boolean(panelRow && validationUsable),
+		  scoreSource: validationUsable ? panel.source : undefined,
+		  scoreGeneratedAt: validationUsable ? panel.generated_at : undefined,
+		  quoteSource: marketUsable ? marketLive?.meta.source : 'local-us-stocks-snapshot',
+		  quoteDataTime: marketUsable ? marketLive?.meta.dataTime : us.generated_at,
+		  quoteStale: !marketUsable,
+		  quoteStaleReason: marketUsable
+		    ? undefined
+		    : marketLive?.meta.staleReason || '静态市场快照，仅供历史参考',
+		  scoreDetail: validationUsable ? panelRow?.detail : undefined,
+		  scoreValidation: panel.validation,
           hasDilution: Boolean(flag),
           industry: raw.industry,
           segment: raw.seg,
@@ -270,19 +320,26 @@ export async function loadUsMarketStocks(): Promise<Stock[]> {
   return usStocksCache;
 }
 
-/** A-share quotes from `/data/a-market.json` (or `/api/a-market`). */
+/** Drop in-memory A-share stocks cache. */
+export function invalidateAStocksCache(): void {
+  aStocksCache = null;
+  aStocksCacheAt = 0;
+}
+
+/** A-share quotes: prefer live `/api/a-market`, return empty on failure. */
 export async function loadAMarketStocks(): Promise<Stock[]> {
   if (!aStocksCache || !isFreshCache(aStocksCacheAt)) {
     aStocksCacheAt = Date.now();
     aStocksCache = (async () => {
-      let data: AMarketFile;
+      let data: AMarketFile | null = null;
       try {
-        data = await fetchDataJson<AMarketFile>('/data/a-market.json');
+        const res = await fetch(apiUrl('/api/a-market'), { cache: 'no-store' });
+        if (res.ok) data = (await res.json()) as AMarketFile;
       } catch {
-        data = await fetch(apiUrl('/api/a-market')).then((r) => {
-          if (!r.ok) throw new Error(`a-market ${r.status}`);
-          return r.json();
-        });
+        /* fall through */
+      }
+      if (!data?.quotes) {
+        return [] as Stock[];
       }
 
       return Object.entries(data.quotes || {}).map(([sym, q]) => {
@@ -291,7 +348,7 @@ export async function loadAMarketStocks(): Promise<Stock[]> {
         const marketCap = mcapYi * 100_000_000;
         return {
           symbol: sym,
-          name: sym,
+          name: (q as { name?: string }).name || sym,
           price: q.price,
           change: Number(((q.price * q.pct) / 100).toFixed(4)),
           changePercent: q.pct,
@@ -354,57 +411,65 @@ export async function findUsStock(symbol: string): Promise<Stock | null> {
   return null;
 }
 
+function mapEtfAnalyses(data: EtfAnalysesFile) {
+  const bySector = new Map<string, EtfRaw[]>();
+  for (const etf of data.etfs) {
+    const list = bySector.get(etf.sector) || [];
+    list.push(etf);
+    bySector.set(etf.sector, list);
+  }
+
+  const categories = {
+    broad: data.supers['宽基'] || 0,
+    industry: data.supers['行业'] || 0,
+    theme: data.supers['主题'] || 0,
+    factor: data.supers['因子策略'] || 0,
+    bond: data.supers['债券'] || 0,
+    commodity: data.supers['商品'] || 0,
+    leveraged: data.supers['工具'] || 0,
+    other: data.supers['其他'] || 0,
+  } as Record<ETFCategory, number>;
+
+  const sectors: ETFSector[] = data.sectors.map((sec) => {
+    const members = bySector.get(sec.sector) || [];
+    const with5y = members.filter((m) => typeof m.ret5y === 'number');
+    const top = [...with5y].sort((a, b) => (b.ret5y || 0) - (a.ret5y || 0))[0];
+    const worstMdd = members.reduce((min, m) => Math.min(min, m.mdd ?? 0), 0);
+    const with1y = members.filter((m) => typeof m.ret1y === 'number');
+    const avg1y = with1y.reduce((sum, member) => sum + (member.ret1y || 0), 0) / Math.max(1, with1y.length) || 0;
+    const avg5y = with5y.reduce((sum, member) => sum + (member.ret5y || 0), 0) / Math.max(1, with5y.length) || 0;
+
+    return {
+      id: slugifySector(sec.sector),
+      name: sec.sector,
+      category: SUPER_TO_CATEGORY[sec.super] || 'other',
+      etfCount: sec.n,
+      aum: sec.aum,
+      topPerformer: {
+        ticker: top?.sym || members[0]?.sym || '—',
+        return5y: top?.ret5y || 0,
+      },
+      maxDrawdown: worstMdd,
+      return1y: Number(avg1y.toFixed(1)),
+      return5y: Number(avg5y.toFixed(1)),
+    };
+  });
+
+  return { sectors, categories, etfs: data.etfs, total: data.n, updated: data.updated || '' };
+}
+
+export async function loadEtfAnalysesSnapshot() {
+  const data = await fetchDataJson<EtfAnalysesFile>('/data/etf-analyses.json');
+  return mapEtfAnalyses(data);
+}
+
 export async function loadEtfAnalyses() {
   if (!etfCache || !isFreshCache(etfCacheAt)) {
     etfCacheAt = Date.now();
     etfCache = (async () => {
       const data = await fetchDataJson<EtfAnalysesFile>('/data/etf-analyses.json');
-      const bySector = new Map<string, EtfRaw[]>();
-      for (const etf of data.etfs) {
-        const list = bySector.get(etf.sector) || [];
-        list.push(etf);
-        bySector.set(etf.sector, list);
-      }
-
-      const categories = {
-        broad: data.supers['宽基'] || 0,
-        industry: data.supers['行业'] || 0,
-        theme: data.supers['主题'] || 0,
-        factor: data.supers['因子策略'] || 0,
-        bond: data.supers['债券'] || 0,
-        commodity: data.supers['商品'] || 0,
-        leveraged: data.supers['工具'] || 0,
-        other: data.supers['其他'] || 0,
-      } as Record<ETFCategory, number>;
-
-      const sectors: ETFSector[] = data.sectors.map((sec) => {
-        const members = bySector.get(sec.sector) || [];
-        const with5y = members.filter((m) => typeof m.ret5y === 'number');
-        const top = with5y.sort((a, b) => (b.ret5y || 0) - (a.ret5y || 0))[0];
-        const worstMdd = members.reduce((min, m) => Math.min(min, m.mdd ?? 0), 0);
-        const avg1y =
-          members.filter((m) => typeof m.ret1y === 'number').reduce((s, m) => s + (m.ret1y || 0), 0) /
-            Math.max(1, members.filter((m) => typeof m.ret1y === 'number').length) || 0;
-        const avg5y =
-          with5y.reduce((s, m) => s + (m.ret5y || 0), 0) / Math.max(1, with5y.length) || 0;
-
-        return {
-          id: slugifySector(sec.sector),
-          name: sec.sector,
-          category: SUPER_TO_CATEGORY[sec.super] || 'other',
-          etfCount: sec.n,
-          aum: sec.aum,
-          topPerformer: {
-            ticker: top?.sym || members[0]?.sym || '—',
-            return5y: top?.ret5y || 0,
-          },
-          maxDrawdown: worstMdd,
-          return1y: Number(avg1y.toFixed(1)),
-          return5y: Number(avg5y.toFixed(1)),
-        };
-      });
-
-      return { sectors, categories, etfs: data.etfs, total: data.n };
+      assertFreshEtfAnalyses(data);
+      return mapEtfAnalyses(data);
     })().catch((err) => {
       etfCache = null;
       etfCacheAt = 0;

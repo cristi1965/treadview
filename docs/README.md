@@ -9,6 +9,8 @@
 | [BACKEND_GO.md](./BACKEND_GO.md) | **Go 后端流程图 + 新手导读** |
 | [DATA.md](./DATA.md) | 行情与快照 |
 | [TESTING.md](./TESTING.md) | 测试与验收 |
+| [UX-USABILITY-AUDIT.md](./UX-USABILITY-AUDIT.md) | WebUI 角色使用、数据与 UI/UX 审计 |
+| [../specs/webui-full-acceptance.md](../specs/webui-full-acceptance.md) | 全量 WebUI 验收清单与通过门槛 |
 | [AI_NATIVE.md](./AI_NATIVE.md) | AI 协作与省 token |
 | [LOCAL.md](./LOCAL.md) | 本地启动 |
 

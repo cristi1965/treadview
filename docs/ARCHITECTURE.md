@@ -12,13 +12,14 @@
 
 | 线 | 壳 | 后端重点 |
 |---|---|---|
-| StockGod UX | `StockGodShell`（`/notes` 独立壳） | market / stocks / reports / whales / etf / notes |
-| TradingAgents 驾驶舱 | `Layout` | analysis / trades / events / WS |
+| 历史研究 + Paper 主产品 | `Layout` | evidence-only research / Paper orders / audit / readiness |
+| StockGod 实验行情 | `StockGodShell`（`/notes` 独立壳） | market / stocks / reports / whales / etf / notes |
 
 路由入口：
 
 - 前端：`app/frontend/src/AppRoutes.tsx`
 - 后端：`app/backend/internal/api/router.go`
+- `/` 根入口重定向到 `/dashboard`；旧行情首页位于 `/market`，实时门禁未通过时保持 fail-closed。
 
 ## 后端分层
 

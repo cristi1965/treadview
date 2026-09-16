@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Report, MarketEvent } from '../types/reports';
-import { get as apiGet } from '../utils/api';
+import { getWithMeta as apiGetWithMeta, type APIResponseMeta } from '../utils/api';
 
 interface ReportsStore {
   // Data
@@ -9,11 +9,15 @@ interface ReportsStore {
   expandedReportIds: Set<string>;
   loading: boolean;
   error: string | null;
+  calendarError: string | null;
+  reportsMeta: APIResponseMeta | null;
+  calendarMeta: APIResponseMeta | null;
   hasMore: boolean;
   total: number;
   
   // Actions
   fetchReports: (offset?: number) => Promise<void>;
+  fetchReportById: (id: string) => Promise<void>;
   fetchMarketCalendar: () => Promise<void>;
   toggleReport: (id: string) => void;
   expandReport: (id: string) => void;
@@ -26,9 +30,15 @@ interface ReportsResponse {
   hasMore: boolean;
 }
 
+interface ReportDetailResponse {
+  report: Report;
+}
+
 interface MarketCalendarResponse {
   events: MarketEvent[];
 }
+
+let reportsRequestSequence = 0;
 
 export const useReportsStore = create<ReportsStore>((set, getState) => ({
   // Initial state
@@ -37,54 +47,38 @@ export const useReportsStore = create<ReportsStore>((set, getState) => ({
   expandedReportIds: new Set(),
   loading: false,
   error: null,
+  calendarError: null,
+  reportsMeta: null,
+  calendarMeta: null,
   hasMore: true,
   total: 0,
   
   // Fetch reports
   fetchReports: async (offset = 0) => {
+    const requestSequence = ++reportsRequestSequence;
     set({ loading: true, error: null });
-    
     try {
-      const response = await apiGet<ReportsResponse>(
+      const result = await apiGetWithMeta<ReportsResponse>(
         `/api/reports?limit=5&offset=${offset}`
       );
+      const response = result.data;
 
-      let reports = response.reports;
-      if (offset === 0) {
-        try {
-          const latest = await fetch('/data/reports-latest.json').then((r) => (r.ok ? r.json() : null));
-          if (latest?.id && !reports.some((r) => r.id === latest.id || (r.date === latest.date && r.title === latest.title))) {
-            reports = [
-              {
-                id: latest.id,
-                type: latest.type === 'pre' || latest.type === 'premarket' ? 'premarket' : 'postmarket',
-                title: latest.title || latest.typeLabel || '最新盘报',
-                date: latest.date || '',
-                time: latest.timeET || '',
-                summary: latest.title || '',
-                content: latest.content || `> ${latest.title || '最新盘报'}\n\n来源: /data/reports-latest.json`,
-                publishedAt: latest.publishedAt || latest.date || '',
-              },
-              ...reports,
-            ];
-          }
-        } catch {
-          // optional enrichment
-        }
-      }
-      
+      if (requestSequence !== reportsRequestSequence) return;
+
       set((state) => ({
-        reports: offset === 0 
-          ? reports 
+        reports: offset === 0
+          ? response.reports
           : [...state.reports, ...response.reports],
         hasMore: response.hasMore,
         total: response.total,
+        reportsMeta: result.meta,
         loading: false,
-        expandedReportIds: offset === 0 && reports.length > 0
-          ? new Set([reports[0].id])
+        expandedReportIds: offset === 0 && response.reports.length > 0
+          ? new Set([response.reports[0].id])
           : state.expandedReportIds
       }));
     } catch (error) {
+      if (requestSequence !== reportsRequestSequence) return;
       console.error('Failed to fetch reports:', error);
       set({
         error: error instanceof Error ? error.message : 'Failed to fetch reports',
@@ -92,14 +86,45 @@ export const useReportsStore = create<ReportsStore>((set, getState) => ({
       });
     }
   },
+
+  fetchReportById: async (id) => {
+    const requestSequence = ++reportsRequestSequence;
+    set({
+      loading: true,
+      error: null,
+      reports: [],
+      reportsMeta: null,
+      expandedReportIds: new Set(),
+    });
+    try {
+      const result = await apiGetWithMeta<ReportDetailResponse>(`/api/reports/${encodeURIComponent(id)}`);
+      const report = result.data.report;
+      if (!report?.id || !report.date) throw new Error('报告详情返回格式无效');
+      if (requestSequence !== reportsRequestSequence) return;
+      set((state) => ({
+        reports: [report, ...state.reports.filter((item) => item.id !== report.id)],
+        reportsMeta: result.meta,
+        loading: false,
+        expandedReportIds: new Set(state.expandedReportIds).add(report.id),
+      }));
+    } catch (error) {
+      if (requestSequence !== reportsRequestSequence) return;
+      set({
+        error: error instanceof Error ? error.message : 'Failed to load report',
+        loading: false,
+      });
+    }
+  },
   
   // Fetch market calendar
   fetchMarketCalendar: async () => {
+    set({ calendarError: null });
     try {
-      const response = await apiGet<MarketCalendarResponse>('/api/market/calendar');
-      set({ marketEvents: response.events });
+      const result = await apiGetWithMeta<MarketCalendarResponse>('/api/market/calendar');
+      set({ marketEvents: result.data.events, calendarMeta: result.meta, calendarError: null });
     } catch (error) {
       console.error('Failed to fetch market calendar:', error);
+      set({ calendarError: error instanceof Error ? error.message : '日历加载失败', calendarMeta: null });
     }
   },
   

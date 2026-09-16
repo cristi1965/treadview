@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useWhalesStore } from '../stores/whalesStore'
+import { Avatar } from '../components/Avatar'
 import { 
   Search, Menu, TrendingUp, BarChart3, Users, 
   Flame, Trophy, Eye, Star, ChevronRight
@@ -8,22 +9,20 @@ import {
 export const WhalesPro: React.FC = () => {
   const { 
     gurus, consensusStocks, congressTrades,
-    fetchGurus, fetchConsensus, fetchCongressTrades,
-    triggerSync
+    fetchGurus, fetchConsensus, fetchCongressTrades
   } = useWhalesStore()
 
   // 状态
   const [activeNav, setActiveNav] = useState<'gurus' | 'congress'>('gurus')
   const [guruFilter, setGuruFilter] = useState<'all' | 'us' | 'a_share' | 'private' | 'hot_money'>('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [expandedGuru, setExpandedGuru] = useState<number | null>(null)
+  const [expandedGuru, setExpandedGuru] = useState<number | string | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
 
   useEffect(() => {
     fetchConsensus()
     fetchGurus()
     fetchCongressTrades()
-    triggerSync()
   }, [])
 
   // 过滤机构
@@ -479,22 +478,11 @@ export const WhalesPro: React.FC = () => {
                   >
                     <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                       {/* 头像 */}
-                      <div style={{
-                        width: '56px',
-                        height: '56px',
-                        borderRadius: '50%',
-                        backgroundColor: avatarBg,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '1.3rem',
-                        fontWeight: 700,
-                        color: 'white',
-                        flexShrink: 0,
-                        boxShadow: `0 4px 12px ${avatarBg}40`
-                      }}>
-                        {initials}
-                      </div>
+                      <Avatar
+                        name={trade.politician}
+                        party={trade.party === 'Democratic' ? 'D' : 'R'}
+                        size={56}
+                      />
 
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>

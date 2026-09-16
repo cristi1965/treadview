@@ -150,6 +150,7 @@ activemq-data/
 # Environments
 .env
 .envrc
+app/backend/.stockgod-admin-token
 .venv
 env/
 venv/
@@ -231,8 +232,15 @@ app/backend/trading-agents
 app/backend/trading-agents-*
 app/backend/data/llm-panel-cache.json
 app/backend/data/notes-cache/
+app/backend/data/flash-title-cache.json
+data/flash-title-cache.json
+*.tmp
 *.log
 .DS_Store
+
+# Local browser/test tooling artifacts
+.playwright-cli/
+.pnpm-store/
 
 # Probe dumps (keep source recovery separate from product tree)
 recovered_source/**/live_*.png

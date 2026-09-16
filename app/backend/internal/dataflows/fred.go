@@ -26,27 +26,27 @@ func NewFREDClient(apiKey string) *FREDClient {
 
 // MacroIndicators holds key macroeconomic indicators.
 type MacroIndicators struct {
-	FedFundsRate    string `json:"fed_funds_rate"`
-	CPI             string `json:"cpi"`
+	FedFundsRate     string `json:"fed_funds_rate"`
+	CPI              string `json:"cpi"`
 	UnemploymentRate string `json:"unemployment_rate"`
-	GDP             string `json:"gdp"`
-	TenYearYield    string `json:"ten_year_yield"`
-	VIX             string `json:"vix"`
+	GDP              string `json:"gdp"`
+	TenYearYield     string `json:"ten_year_yield"`
+	VIX              string `json:"vix"`
 }
 
 // seriesMap maps indicator names to their FRED series IDs.
 var seriesMap = map[string]string{
-	"fed_funds_rate":   "FEDFUNDS",
-	"cpi":              "CPIAUCSL",
-	"unemployment":     "UNRATE",
-	"gdp":              "GDP",
-	"ten_year_yield":   "DGS10",
-	"vix":              "VIXCLS",
-	"sp500":            "SP500",
-	"housing_starts":   "HOUST",
-	"industrial_prod":  "INDPRO",
-	"retail_sales":     "RSXFS",
-	"consumer_sent":    "UMCSENT",
+	"fed_funds_rate":  "FEDFUNDS",
+	"cpi":             "CPIAUCSL",
+	"unemployment":    "UNRATE",
+	"gdp":             "GDP",
+	"ten_year_yield":  "DGS10",
+	"vix":             "VIXCLS",
+	"sp500":           "SP500",
+	"housing_starts":  "HOUST",
+	"industrial_prod": "INDPRO",
+	"retail_sales":    "RSXFS",
+	"consumer_sent":   "UMCSENT",
 }
 
 // GetMacroIndicators fetches key macro indicators and formats them for LLM consumption.

@@ -17,8 +17,7 @@ const WavesIcon = () => (
 export const WhalesProV2: React.FC = () => {
   const { 
     gurus, consensusStocks, congressTrades,
-    fetchGurus, fetchConsensus, fetchCongressTrades,
-    triggerSync
+    fetchGurus, fetchConsensus, fetchCongressTrades
   } = useWhalesStore()
 
   // 状态
@@ -30,7 +29,6 @@ export const WhalesProV2: React.FC = () => {
     fetchConsensus()
     fetchGurus()
     fetchCongressTrades()
-    triggerSync()
   }, [])
 
   // 过滤机构

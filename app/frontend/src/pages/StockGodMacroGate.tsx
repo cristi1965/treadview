@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import { LockKeyhole, LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StockGodShell } from '../components/layout/StockGodShell';
+import { useI18n } from '../i18n';
 
 export const StockGodMacroGate: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!token.trim()) {
-      setError('请输入访问口令');
+      setError(t('gate.tokenErr'));
       return;
     }
 
@@ -20,7 +22,7 @@ export const StockGodMacroGate: React.FC = () => {
   };
 
   return (
-    <StockGodShell title="宏观驾驶舱">
+    <StockGodShell title={t('gate.title')}>
       <main className="mx-auto flex min-h-[calc(100vh-180px)] w-full max-w-[760px] items-center px-4 py-10">
         <section className="w-full rounded-lg border border-line bg-surface/80 p-6 shadow-[0_18px_70px_rgba(0,0,0,0.28)] backdrop-blur md:p-8">
           <div className="mb-7 flex items-start gap-4">
@@ -29,13 +31,13 @@ export const StockGodMacroGate: React.FC = () => {
             </span>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-faint">
-                Private Macro Console
+                {t('gate.kicker')}
               </p>
               <h1 className="text-[28px] font-semibold leading-tight text-ink md:text-[34px]">
-                宏观驾驶舱
+                {t('gate.title')}
               </h1>
               <p className="mt-3 text-sm leading-6 text-muted">
-                私密工具 · 输入访问口令(与 /stats 同一个)
+                {t('gate.sub')}
               </p>
             </div>
           </div>
@@ -60,7 +62,7 @@ export const StockGodMacroGate: React.FC = () => {
               className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-white transition hover:brightness-110"
             >
               <LogIn size={16} />
-              进入
+              {t('gate.enter')}
             </button>
           </form>
 

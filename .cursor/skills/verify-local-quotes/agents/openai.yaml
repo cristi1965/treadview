@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Local Quotes"
+  short_description: "Verify market APIs and data freshness."
+  default_prompt: "Use $verify-local-quotes to validate local quote APIs, data freshness, and cache headers before claiming the data fix is complete."

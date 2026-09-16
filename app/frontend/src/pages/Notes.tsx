@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { BookOpen, Search } from 'lucide-react';
+import { ArrowLeft, BookOpen, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { get as apiGet } from '../utils/api';
 import { useUiStore } from '../stores/uiStore';
+import { useI18n } from '../i18n';
 
 interface NotesItem {
   id: string;
@@ -28,6 +29,27 @@ interface NotesTOC {
 
 const READ_KEY = 'stockgod-notes-read-ids';
 
+const NOTE_VISUALS = {
+  default: {
+    src: '/images/notes/research-desk.jpg',
+    alt: '桌面上的投资研究笔记、计算器和图表',
+  },
+  market: {
+    src: '/images/notes/market-newspaper.jpg',
+    alt: '展示全球市场数据与走势图的财经报纸',
+  },
+  technical: {
+    src: '/images/notes/trading-chart.jpg',
+    alt: '屏幕上的红绿 K 线与价格走势',
+  },
+} as const;
+
+const getNoteVisual = (sectionKey?: string) => {
+  if (sectionKey === 'market' || sectionKey === 'company' || sectionKey === 'master') return NOTE_VISUALS.market;
+  if (sectionKey === 'kline' || sectionKey === 'trend' || sectionKey === 'indi' || sectionKey === 'trade') return NOTE_VISUALS.technical;
+  return NOTE_VISUALS.default;
+};
+
 const loadReadIds = (): Set<string> => {
   try {
     const raw = localStorage.getItem(READ_KEY);
@@ -38,9 +60,19 @@ const loadReadIds = (): Set<string> => {
   }
 };
 
-const saveReadIds = (ids: Set<string>) => {
-  localStorage.setItem(READ_KEY, JSON.stringify([...ids]));
+const saveReadIds = (ids: Set<string>): boolean => {
+  try {
+    localStorage.setItem(READ_KEY, JSON.stringify([...ids]));
+    return true;
+  } catch {
+    return false;
+  }
 };
+
+interface NotesSearchResult {
+  id: string;
+  snippet: string;
+}
 
 interface ChartLine {
   y: number;
@@ -232,20 +264,30 @@ const NoteChart: React.FC<{ data: ChartData; isDark: boolean }> = ({ data, isDar
 
 /** StockGod 「雷司令投资笔记」— 独立壳，不挂 StockGodShell；不影响 /journal。 */
 export const Notes: React.FC = () => {
+  const articleRef = useRef<HTMLElement>(null);
+  const articleRequestSequence = useRef(0);
   const { id: routeId } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const [toc, setToc] = useState<NotesTOC | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState('');
+  const [articleUpdatedAt, setArticleUpdatedAt] = useState('');
   const [loadingToc, setLoadingToc] = useState(true);
   const [loadingArt, setLoadingArt] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tocRetryNonce, setTocRetryNonce] = useState(0);
   const [readIds, setReadIds] = useState<Set<string>>(() => loadReadIds());
   const [query, setQuery] = useState('');
-  const [fontSize, setFontSize] = useState<number>(14);
+  const [bodyHits, setBodyHits] = useState<Map<string, string>>(new Map());
+  const [searchingBody, setSearchingBody] = useState(false);
+  const [bodySearchError, setBodySearchError] = useState('');
+  const [storageError, setStorageError] = useState('');
+  const [fontSize, setFontSize] = useState<number>(17);
 
   const theme = useUiStore((s) => s.theme);
+  const toggleLanguage = useUiStore((s) => s.toggleLanguage);
+  const { t, language } = useI18n();
   const isDark = theme === 'dark';
 
   const renderContent = (content: string) => {
@@ -265,20 +307,35 @@ export const Notes: React.FC = () => {
         <ReactMarkdown
           key={idx}
           components={{
-            h2: ({ children }) => (
-              <h3 className={`mb-2 mt-6 flex items-center gap-2 text-[15px] font-semibold first:mt-0 ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>
-                <span className={isDark ? 'text-[#d98a6a]' : 'text-[#b45309]'}>◆</span>
-                {children}
-              </h3>
-            ),
+            h2: ({ children }) => {
+              const label = String(children);
+              const isTakeaway = label === '一句话' || label === '一分钟记住';
+              const isWarning = label === '常见误区';
+              return (
+                <h3 className={`mb-4 mt-12 flex items-start gap-3 text-[1.3em] font-bold leading-snug first:mt-0 ${
+                  isTakeaway ? 'note-key-heading rounded-t-lg border border-b-0 px-4 pb-2 pt-4' : ''
+                } ${isWarning ? 'note-warning-heading rounded-t-lg border border-b-0 px-4 pb-2 pt-4' : ''} ${
+                  isDark ? 'border-[#d98a6a]/35 text-[#f4f1ec]' : 'border-[#b45309]/30 text-[#1c1917]'
+                }`}>
+                  <span className={`mt-[0.42em] h-2 w-2 shrink-0 rotate-45 ${isDark ? 'bg-[#d98a6a]' : 'bg-[#b45309]'}`} aria-hidden="true" />
+                  <span>{children}</span>
+                </h3>
+              );
+            },
             h3: ({ children }) => (
-              <h4 className={`mb-1.5 mt-4 text-[13px] font-semibold ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>{children}</h4>
+              <h4 className={`mb-3 mt-8 text-[1.08em] font-bold ${isDark ? 'text-[#f4f1ec]' : 'text-[#1c1917]'}`}>{children}</h4>
             ),
-            p: ({ children }) => <p className="my-2">{children}</p>,
-            ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
-            ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+            p: ({ children }) => <p className="my-5">{children}</p>,
+            ul: ({ children }) => <ul className="my-5 list-disc space-y-2 pl-6">{children}</ul>,
+            ol: ({ children }) => <ol className="my-5 list-decimal space-y-2 pl-6">{children}</ol>,
             li: ({ children }) => <li className={`marker:${isDark ? 'text-[#585b66]' : 'text-[#a8a29e]'}`}>{children}</li>,
-            strong: ({ children }) => <strong className={`font-semibold ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>{children}</strong>,
+            strong: ({ children }) => (
+              <mark className={`rounded-sm px-1 py-0.5 font-bold ${
+                isDark ? 'bg-[#d98a6a]/18 text-[#ffd8c8]' : 'bg-[#f4c7ad]/55 text-[#713719]'
+              }`}>
+                {children}
+              </mark>
+            ),
             a: ({ href, children }) => (
               <a href={href} className={`${isDark ? 'text-[#d98a6a]' : 'text-[#b45309]'} hover:underline`} target="_blank" rel="noreferrer">
                 {children}
@@ -316,7 +373,7 @@ export const Notes: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tocRetryNonce]);
 
   const total = useMemo(
     () => (toc?.sections || []).reduce((sum, sec) => sum + (sec.items?.length || 0), 0),
@@ -329,12 +386,52 @@ export const Notes: React.FC = () => {
     [toc, openSection]
   );
 
+  useEffect(() => {
+    try {
+      const key = `${READ_KEY}-probe`;
+      localStorage.setItem(key, '1');
+      localStorage.removeItem(key);
+    } catch {
+      setStorageError('阅读记录无法写入当前浏览器存储');
+    }
+  }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setBodyHits(new Map());
+      setBodySearchError('');
+      setSearchingBody(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSearchingBody(true);
+      setBodySearchError('');
+      try {
+        const data = await apiGet<{ results: NotesSearchResult[] }>(`/api/notes/search?q=${encodeURIComponent(q)}`);
+        if (!cancelled) setBodyHits(new Map((data.results || []).map((item) => [item.id, item.snippet])));
+      } catch (error) {
+        if (!cancelled) {
+          setBodyHits(new Map());
+          setBodySearchError(error instanceof Error ? error.message : '正文搜索暂不可用');
+        }
+      } finally {
+        if (!cancelled) setSearchingBody(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
   const filteredItems = useMemo(() => {
     if (!activeSection) return [];
     const q = query.trim().toLowerCase();
     if (!q) return activeSection.items;
-    return activeSection.items.filter((item) => item.t.toLowerCase().includes(q));
-  }, [activeSection, query]);
+    return activeSection.items.filter((item) => item.t.toLowerCase().includes(q) || bodyHits.has(item.id));
+  }, [activeSection, query, bodyHits]);
 
   const globalHits = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -342,11 +439,11 @@ export const Notes: React.FC = () => {
     const hits: { section: NotesSection; item: NotesItem }[] = [];
     for (const sec of toc.sections) {
       for (const item of sec.items) {
-        if (item.t.toLowerCase().includes(q)) hits.push({ section: sec, item });
+        if (item.t.toLowerCase().includes(q) || bodyHits.has(item.id)) hits.push({ section: sec, item });
       }
     }
     return hits.slice(0, 24);
-  }, [toc, query]);
+  }, [toc, query, bodyHits]);
 
   const activeMeta = useMemo(() => {
     if (!toc || !activeId) return null;
@@ -356,37 +453,48 @@ export const Notes: React.FC = () => {
     }
     return null;
   }, [toc, activeId]);
+  const activeVisual = getNoteVisual(activeMeta?.section.key);
 
   useEffect(() => {
+    document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
     if (activeMeta) {
       document.title = `${activeMeta.item.t} | ${toc?.name || '雷司令投资笔记'} · 我不是神`;
     } else {
       document.title = `${toc?.name || '雷司令投资笔记'} · 我不是神`;
     }
-  }, [activeMeta, toc]);
+  }, [activeMeta, language, toc]);
 
   const openArticle = async (id: string, pushRoute = true) => {
+    const requestSequence = ++articleRequestSequence.current;
     setActiveId(id);
     if (pushRoute && routeId !== id) {
       navigate(`/notes/${id}`, { replace: false });
     }
     setLoadingArt(true);
     setError(null);
+    setArticleUpdatedAt('');
     try {
-      const data = await apiGet<{ md: string }>(`/api/notes/art?id=${encodeURIComponent(id)}`);
+      const data = await apiGet<{ md: string; updatedAt?: string }>(`/api/notes/art?id=${encodeURIComponent(id)}`);
+      if (requestSequence !== articleRequestSequence.current) return;
       setMarkdown(data.md || '');
-      setReadIds((prev) => {
-        if (prev.has(id)) return prev;
-        const next = new Set(prev);
+      setArticleUpdatedAt(data.updatedAt || 'unknown');
+      if (!readIds.has(id)) {
+        const next = new Set(readIds);
         next.add(id);
-        saveReadIds(next);
-        return next;
-      });
+        setReadIds(next);
+        if (!saveReadIds(next)) setStorageError('阅读记录无法写入当前浏览器存储');
+      }
     } catch (err) {
+      if (requestSequence !== articleRequestSequence.current) return;
       setMarkdown('');
+      setArticleUpdatedAt('');
       setError(err instanceof Error ? err.message : '加载正文失败');
     } finally {
+      if (requestSequence !== articleRequestSequence.current) return;
       setLoadingArt(false);
+      if (window.innerWidth < 1024) {
+        window.requestAnimationFrame(() => articleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      }
     }
   };
 
@@ -408,35 +516,49 @@ export const Notes: React.FC = () => {
   if (loadingToc) {
     return (
       <div className={`flex min-h-screen items-center justify-center text-sm ${isDark ? 'bg-[#08090b] text-[#8e919b]' : 'bg-[#fdfaf3] text-[#6b7280]'}`}>
-        加载笔记目录…
+        {t('notes.loading')}
       </div>
     );
   }
 
   if (!toc) {
     return (
-      <div className={`flex min-h-screen items-center justify-center text-sm ${isDark ? 'bg-[#08090b] text-[#f6465d]' : 'bg-[#fdfaf3] text-[#b42318]'}`}>
-        {error || '目录不可用'}
+      <div className={`flex min-h-screen items-center justify-center px-5 ${isDark ? 'bg-[#08090b] text-[#ecedf0]' : 'bg-[#fdfaf3] text-[#1c1917]'}`}>
+        <div className="max-w-md text-center">
+          <h1 className="text-lg font-semibold">研究笔记暂不可用</h1>
+          <p className={`mt-2 text-sm ${isDark ? 'text-[#f6465d]' : 'text-[#b42318]'}`}>{error || t('notes.noToc')}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={() => setTocRetryNonce((value) => value + 1)} className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${borderClass}`}>
+              <RefreshCw className="h-4 w-4" />重试
+            </button>
+            <Link to="/dashboard" className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${borderClass}`}>
+              <ArrowLeft className="h-4 w-4" />返回研究入口
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className={`notes-shell flex min-h-screen flex-col transition-colors duration-150 ${bgClass}`}>
-      <header className={`sticky top-0 z-20 border-b ${borderClass} ${headerBgClass} backdrop-blur-sm`}>
+      <header className={`z-20 border-b lg:sticky lg:top-0 ${borderClass} ${headerBgClass} backdrop-blur-sm`}>
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <div className="min-w-0 flex-1">
+          <div className="w-full min-w-0 flex-none sm:w-auto sm:flex-1">
             <h1 className={`font-serif text-[18px] font-semibold tracking-tight sm:text-[20px] ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>
               {toc.name}
             </h1>
             <p className={`mt-0.5 text-xs ${textMutedClass}`}>{toc.tagline}</p>
+            <p className={`mt-0.5 text-[10px] ${textFaintClass}`}>
+              内容更新 {toc.updatedAt && toc.updatedAt !== 'unknown' ? new Date(toc.updatedAt).toLocaleString() : '未知'}
+            </p>
           </div>
-          <div className="relative w-full max-w-xs sm:w-56">
+          <div className="order-last relative w-full sm:order-none sm:w-56">
             <Search className={`pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${isDark ? 'text-[#585b66]' : 'text-[#a8a29e]'}`} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜 K线 / MACD / 止损..."
+              placeholder={t('notes.search')}
               className={`w-full rounded-full border py-1.5 pl-8 pr-3 text-xs outline-none focus:ring-1 ${
                 isDark
                   ? 'bg-[#111317] text-[#ecedf0] placeholder:text-[#585b66] border-[#ebeef512] focus:border-[#d98a6a] focus:ring-[#d98a6a]/30'
@@ -445,27 +567,39 @@ export const Notes: React.FC = () => {
             />
           </div>
           <span className={`shrink-0 text-xs ${textMutedClass}`}>
-            已读 {readCount}/{total}
+            {t('notes.read', { a: readCount, b: total })}
           </span>
+          <div className="inline-flex shrink-0 rounded-lg border border-line bg-surface p-0.5 text-[11px] font-semibold">
+            <button onClick={() => language === 'en' && toggleLanguage()} className={`rounded-md px-2.5 py-1.5 transition ${language === 'zh' ? 'bg-surface-3 text-ink' : 'text-muted hover:text-ink'}`}>中</button>
+            <button onClick={() => language === 'zh' && toggleLanguage()} className={`rounded-md px-2.5 py-1.5 transition ${language === 'en' ? 'bg-surface-3 text-ink' : 'text-muted hover:text-ink'}`}>EN</button>
+          </div>
           <Link
-            to="/"
+            to="/dashboard"
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
               isDark
                 ? 'border-[#ebeef512] bg-[#111317] text-[#ecedf0] hover:border-[#d98a6a] hover:text-white'
                 : 'border-[#e8e0d4] bg-white text-[#44403c] hover:border-[#c4b5a0] hover:text-[#1c1917]'
             }`}
           >
-            我不是神 ↗
+            研究工作台
           </Link>
+          <Link to="/market" className={`inline-flex min-h-11 shrink-0 items-center rounded-md border px-3 text-xs font-medium transition sm:min-h-9 ${isDark ? 'border-[#ebeef512] bg-[#111317] text-[#ecedf0]' : 'border-[#e8e0d4] bg-white text-[#44403c]'}`}>实验行情</Link>
         </div>
+        {(storageError || bodySearchError) && (
+          <div className="mx-auto flex max-w-[1400px] flex-wrap gap-x-4 gap-y-1 px-4 pb-2 text-[11px] text-[#f6465d] sm:px-6">
+            {storageError && <span>{storageError}</span>}
+            {bodySearchError && <span>正文搜索失败：{bodySearchError}</span>}
+          </div>
+        )}
       </header>
 
-      <div className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 lg:grid-cols-[200px_240px_minmax(0,1fr)]">
-        <aside className={`border-b lg:border-b-0 lg:border-r ${borderClass}`}>
-          <nav className="max-h-[40vh] space-y-0.5 overflow-y-auto p-2 lg:max-h-[calc(100vh-88px)]">
+      <div className="mx-auto grid w-full max-w-[1536px] flex-1 grid-cols-1 lg:grid-cols-[216px_272px_minmax(0,1fr)]">
+        <aside className={`border-b lg:sticky lg:top-[89px] lg:h-[calc(100dvh-89px)] lg:self-start lg:border-b-0 lg:border-r ${borderClass}`}>
+          <nav className="max-h-[40vh] space-y-0.5 overflow-y-auto p-2 lg:h-full lg:max-h-none">
             <button
               type="button"
               onClick={() => {
+                articleRequestSequence.current += 1;
                 setOpenSection(null);
                 setActiveId(null);
                 setMarkdown('');
@@ -510,13 +644,15 @@ export const Notes: React.FC = () => {
           </nav>
         </aside>
 
-        <aside className={`border-b lg:border-b-0 lg:border-r ${borderClass}`}>
-          <div className="max-h-[40vh] overflow-y-auto p-3 lg:max-h-[calc(100vh-88px)]">
+        <aside className={`border-b lg:sticky lg:top-[89px] lg:h-[calc(100dvh-89px)] lg:self-start lg:border-b-0 lg:border-r ${borderClass}`}>
+          <div className="max-h-[40vh] overflow-y-auto p-3 lg:h-full lg:max-h-none">
             {query.trim() && !activeSection ? (
               <div className="space-y-1">
-                <p className={`mb-2 text-[11px] ${textFaintClass}`}>搜索结果 · {globalHits.length}</p>
+                <p className={`mb-2 text-[11px] ${textFaintClass}`}>
+                  {searchingBody ? '正在搜索标题与正文…' : t('notes.hits', { n: globalHits.length })}
+                </p>
                 {globalHits.length === 0 ? (
-                  <p className={`py-8 text-center text-xs ${textFaintClass}`}>没有匹配篇目</p>
+                  <p className={`py-8 text-center text-xs ${textFaintClass}`}>{t('notes.noHit')}</p>
                 ) : (
                   globalHits.map(({ section, item }) => (
                     <button
@@ -534,14 +670,15 @@ export const Notes: React.FC = () => {
                     >
                       <span className="truncate">{item.t}</span>
                       <span className={`text-[10px] ${textFaintClass}`}>{section.t}</span>
+                      {bodyHits.get(item.id) && <span className={`mt-0.5 line-clamp-2 text-[10px] ${textFaintClass}`}>{bodyHits.get(item.id)}</span>}
                     </button>
                   ))
                 )}
               </div>
             ) : !activeSection ? (
               <div className={`flex min-h-[220px] flex-col items-center justify-center px-3 text-center text-xs leading-relaxed ${textFaintClass}`}>
-                <p>← 点左侧栏目</p>
-                <p className="mt-1">展开这一章的目录</p>
+                <p>{t('notes.pick')}</p>
+                <p className="mt-1">{t('notes.expand')}</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -561,7 +698,7 @@ export const Notes: React.FC = () => {
                       }`}
                     >
                       <span className="min-w-0 flex-1 truncate">{item.t}</span>
-                      {read && <span className={`shrink-0 text-[10px] ${textFaintClass}`}>已读</span>}
+                      {read && <span className={`shrink-0 text-[10px] ${textFaintClass}`}>{t('notes.readTag')}</span>}
                     </button>
                   );
                 })}
@@ -570,7 +707,7 @@ export const Notes: React.FC = () => {
           </div>
         </aside>
 
-        <main className="min-h-[50vh]">
+        <main ref={articleRef} className={`min-h-[50vh] scroll-mt-24 ${isDark ? 'bg-[#0c0e11]' : 'bg-[#fffdf8]'}`}>
           {!activeId && (
             <div className="px-5 py-5 sm:px-8">
               <div className={`mb-5 rounded-2xl border p-5 shadow-sm ${isDark ? 'border-[#ebeef512] bg-[#111317]' : 'border-[#e8e0d4] bg-white'}`}>
@@ -580,7 +717,7 @@ export const Notes: React.FC = () => {
                     <h2 className={`mt-1 font-serif text-2xl font-semibold tracking-tight ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>{toc.name}</h2>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs ${isDark ? 'bg-[#181b21] text-[#8e919b]' : 'bg-[#f5efe4] text-[#78716c]'}`}>
-                    已读 {readCount}/{total}
+                    {t('notes.read', { a: readCount, b: total })}
                   </span>
                 </div>
               </div>
@@ -604,7 +741,7 @@ export const Notes: React.FC = () => {
                           <span className={`block text-[15px] font-semibold ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>{sec.t}</span>
                           <span className={`mt-1 block text-xs leading-relaxed ${isDark ? 'text-[#8e919b]' : 'text-[#78716c]'}`}>{sec.blurb}</span>
                           <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] ${isDark ? 'bg-[#181b21] text-[#8e919b]' : 'bg-[#f5efe4] text-[#8a8175]'}`}>
-                            {done}/{sec.items.length} 已读
+                            {t('notes.secRead', { a: done, b: sec.items.length })}
                           </span>
                         </span>
                       </div>
@@ -612,32 +749,48 @@ export const Notes: React.FC = () => {
                   );
                 })}
               </div>
-              <p className={`mt-5 text-center text-xs ${textFaintClass}`}>选一篇开始读 · 全库 {total} 篇 · 已读 {readCount} 篇</p>
+              <p className={`mt-5 text-center text-xs ${textFaintClass}`}>{t('notes.pickStart', { total, read: readCount })}</p>
             </div>
           )}
 
           {activeId && (
-            <article className="px-5 py-5 sm:px-8">
+            <article className="px-5 pb-16 pt-5 sm:px-8 lg:px-12 lg:pt-8">
               {activeMeta && (
-                <header className={`mb-5 border-b pb-4 flex flex-wrap items-center justify-between gap-3 ${isDark ? 'border-[#ebeef512]' : 'border-[#e8e0d4]'}`}>
-                  <div>
-                    <div className={`text-[11px] ${textFaintClass}`}>
-                      {activeMeta.section.t} / 第 {activeMeta.index} 篇
-                    </div>
-                    <h2 className={`mt-1 font-serif text-xl font-semibold tracking-tight ${isDark ? 'text-[#ecedf0]' : 'text-[#1c1917]'}`}>
-                      {activeMeta.item.t}
-                    </h2>
+                <header className="mx-auto mb-9 max-w-[780px]">
+                  <div className={`overflow-hidden rounded-lg border ${borderClass}`}>
+                    <img
+                      src={activeVisual.src}
+                      alt={activeVisual.alt}
+                      className="h-40 w-full object-cover opacity-90 sm:h-52 lg:h-60"
+                    />
                   </div>
-                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                  <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className={`flex items-center gap-2 text-xs font-medium ${isDark ? 'text-[#d98a6a]' : 'text-[#b45309]'}`}>
+                        <BookOpen className="h-4 w-4" strokeWidth={1.7} />
+                        {activeMeta.section.t}，第 {activeMeta.index} 篇
+                      </div>
+                      <h2 className={`mt-2 text-2xl font-bold leading-tight sm:text-3xl ${isDark ? 'text-[#f4f1ec]' : 'text-[#1c1917]'}`}>
+                        {activeMeta.item.t}
+                      </h2>
+                      <p className={`mt-3 flex items-start gap-2 text-sm leading-relaxed ${textMutedClass}`}>
+                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
+                        {activeMeta.section.blurb}
+                      </p>
+                      <div className={`mt-3 text-[11px] ${textFaintClass}`}>
+                        内容时间 {articleUpdatedAt && articleUpdatedAt !== 'unknown' ? new Date(articleUpdatedAt).toLocaleString() : '未知'}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setFontSize(prev => Math.max(12, prev - 1))}
-                      className={`rounded px-2.5 py-1 text-xs font-semibold border transition ${
+                      onClick={() => setFontSize(prev => Math.max(15, prev - 1))}
+                      className={`min-h-10 rounded-md border px-3 text-xs font-semibold transition active:translate-y-px ${
                         isDark 
                           ? 'border-[#ebeef512] bg-[#111317] text-[#ecedf0] hover:border-[#d98a6a] hover:text-white' 
                           : 'border-[#e8e0d4] bg-white text-[#44403c] hover:border-[#c4b5a0] hover:text-[#1c1917]'
                       }`}
-                      title="缩小字体"
+                      title={t('notes.smaller')}
                     >
                       A-
                     </button>
@@ -646,25 +799,34 @@ export const Notes: React.FC = () => {
                     </span>
                     <button
                       type="button"
-                      onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
-                      className={`rounded px-2.5 py-1 text-xs font-semibold border transition ${
+                      onClick={() => setFontSize(prev => Math.min(22, prev + 1))}
+                      className={`min-h-10 rounded-md border px-3 text-xs font-semibold transition active:translate-y-px ${
                         isDark 
                           ? 'border-[#ebeef512] bg-[#111317] text-[#ecedf0] hover:border-[#d98a6a] hover:text-white' 
                           : 'border-[#e8e0d4] bg-white text-[#44403c] hover:border-[#c4b5a0] hover:text-[#1c1917]'
                       }`}
-                      title="放大字体"
+                      title={t('notes.larger')}
                     >
                       A+
                     </button>
+                    </div>
                   </div>
                 </header>
               )}
 
-              {loadingArt && <p className={`text-sm ${textMutedClass}`}>加载正文…</p>}
+              {loadingArt && !markdown && <p className={`text-sm ${textMutedClass}`}>{t('notes.bodyLoading')}</p>}
               {error && <p className="text-sm text-[#f6465d]">{error}</p>}
 
-              {!loadingArt && markdown && (
-                <div className={`space-y-3 leading-relaxed ${isDark ? 'text-[#8e919b]' : 'text-[#57534e]'}`} style={{ fontSize: `${fontSize}px` }}>
+              {markdown && (
+                <div
+                  aria-busy={loadingArt}
+                  className={`mx-auto max-w-[780px] leading-[1.95] [&_.note-key-heading+p]:mt-0 [&_.note-key-heading+p]:rounded-b-lg [&_.note-key-heading+p]:border [&_.note-key-heading+p]:border-t-0 [&_.note-key-heading+p]:px-4 [&_.note-key-heading+p]:pb-5 [&_.note-key-heading+p]:pt-1 [&_.note-warning-heading+ul]:mt-0 [&_.note-warning-heading+ul]:rounded-b-lg [&_.note-warning-heading+ul]:border [&_.note-warning-heading+ul]:border-t-0 [&_.note-warning-heading+ul]:px-9 [&_.note-warning-heading+ul]:pb-5 [&_.note-warning-heading+ul]:pt-1 ${
+                    isDark
+                      ? 'text-[#c7c9cf] [&_.note-key-heading+p]:border-[#d98a6a]/35 [&_.note-key-heading+p]:bg-[#d98a6a]/[0.08] [&_.note-warning-heading+ul]:border-[#d98a6a]/35 [&_.note-warning-heading+ul]:bg-[#d98a6a]/[0.05]'
+                      : 'text-[#49443e] [&_.note-key-heading+p]:border-[#b45309]/30 [&_.note-key-heading+p]:bg-[#fff1e8] [&_.note-warning-heading+ul]:border-[#b45309]/30 [&_.note-warning-heading+ul]:bg-[#fff8f2]'
+                  }`}
+                  style={{ fontSize: `${fontSize}px` }}
+                >
                   {renderContent(markdown)}
                 </div>
               )}
@@ -674,7 +836,7 @@ export const Notes: React.FC = () => {
       </div>
 
       <footer className={`mt-auto border-t px-4 py-5 text-center ${isDark ? 'border-[#ebeef512]' : 'border-[#e8e0d4]'}`}>
-        <div className={`font-serif text-sm ${isDark ? 'text-[#ecedf0]' : 'text-[#44403c]'}`}>雷司令投资笔记</div>
+        <div className={`font-serif text-sm ${isDark ? 'text-[#ecedf0]' : 'text-[#44403c]'}`}>{t('notes.brand')}</div>
         <p className={`mx-auto mt-1 max-w-xl text-[11px] leading-relaxed ${textFaintClass}`}>
           本笔记为投资知识科普资料,不构成任何投资建议。投资有风险,决策请独立
         </p>

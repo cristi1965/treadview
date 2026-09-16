@@ -1,0 +1,89 @@
+{
+  "updatedAt": "2026-08-15T16:15:00Z",
+  "vix": {
+    "level": 14.85,
+    "change": -0.42,
+    "pct": -2.75,
+    "status": "恐慌指数平稳 · 市场风险偏好处于良好区间",
+    "termStructure": "Contango (升水结构 · 远期期权风险溢价正常)"
+  },
+  "ivRankTop": [
+    { "sym": "NVDA", "name": "英伟达", "ivRank": 84, "ivPct": 82, "callPutRatio": 1.85, "expectedMove": "±6.8%", "stance": "看多扫货偏向 (Bullish Sweep)" },
+    { "sym": "CRWV", "name": "CoreWeave", "ivRank": 88, "ivPct": 85, "callPutRatio": 2.10, "expectedMove": "±9.2%", "stance": "看多看涨期权极热" },
+    { "sym": "NBIS", "name": "Nebius Group", "ivRank": 91, "ivPct": 89, "callPutRatio": 2.35, "expectedMove": "±10.5%", "stance": "隐含波动率极高" },
+    { "sym": "PLTR", "name": "Palantir", "ivRank": 75, "ivPct": 72, "callPutRatio": 1.65, "expectedMove": "±5.8%", "stance": "大单 Call 看多占据主导" },
+    { "sym": "MSTR", "name": "MicroStrategy", "ivRank": 94, "ivPct": 92, "callPutRatio": 1.95, "expectedMove": "±11.8%", "stance": "BTC 代理极高波动" },
+    { "sym": "TSLA", "name": "特斯拉", "ivRank": 79, "ivPct": 76, "callPutRatio": 1.42, "expectedMove": "±7.4%", "stance": "看涨/看跌双向拉锯" }
+  ],
+  "darkPool": {
+    "netSentiment": 64,
+    "sentimentLabel": "暗盘机构多头占优 (64% 看多扫货)",
+    "prints": [
+      { "time": "16:42:15 ET", "sym": "NVDA", "price": 200.50, "size": "125,000 股", "value": "$25.06M", "side": "BULLISH_SWEEP", "sideLabel": "🟢 机构看多扫货", "venue": "FINRA Dark Pool" },
+      { "time": "16:38:02 ET", "sym": "PLTR", "price": 130.40, "size": "85,000 股", "value": "$11.08M", "side": "BULLISH_SWEEP", "sideLabel": "🟢 机构看多扫货", "venue": "Over-the-Counter" },
+      { "time": "16:25:50 ET", "sym": "CRWV", "price": 105.10, "size": "60,000 股", "value": "$6.31M", "side": "BULLISH_SWEEP", "sideLabel": "🟢 暗盘大单吸筹", "venue": "FINRA Dark Pool" },
+      { "time": "16:15:30 ET", "sym": "NBIS", "price": 276.90, "size": "35,000 股", "value": "$9.69M", "side": "BULLISH_SWEEP", "sideLabel": "🟢 暗盘大单吸筹", "venue": "Over-the-Counter" },
+      { "time": "15:58:10 ET", "sym": "TSLA", "price": 310.80, "size": "90,000 股", "value": "$27.97M", "side": "BEARISH_BLOCK", "sideLabel": "🔴 机构盘后对冲减仓", "venue": "FINRA Dark Pool" }
+    ]
+  },
+  "nightSessionSpikes": [
+    { "sym": "NBIS", "name": "Nebius Group", "price": 277.68, "nightPct": "+8.88%", "volMult": "4.2x 爆量", "reason": "欧洲千兆瓦级 AI 数据中心扩建消息发布，夜盘成交量放大 4.2 倍" },
+    { "sym": "IREN", "name": "Iris Energy", "price": 58.11, "nightPct": "+12.30%", "volMult": "5.1x 爆量", "reason": "AI 数据中心电力瓶颈突破，夜盘刷新阶段新高" },
+    { "sym": "COHR", "name": "Coherent", "price": 262.89, "nightPct": "+5.55%", "volMult": "3.5x 爆量", "reason": "光模块/光通信需求强劲，夜盘买盘密集挂单" },
+    { "sym": "CRWV", "name": "CoreWeave", "price": 105.26, "nightPct": "-0.97%", "volMult": "2.8x", "reason": "夜盘高位换手拉锯，买盘在 $105 关口形成密集托盘" }
+  ],
+  "interviewsAndTranscripts": [
+    {
+      "time": "08-14 20:30 ET",
+      "source": "CNBC 独家专访",
+      "speaker": "Jensen Huang (英伟达 CEO)",
+      "title": "黄仁勋：Blackwell 芯片需求极为疯狂，算力扩充仍处于代际跃迁初期",
+      "summary": "黄仁勋接受 CNBC 采访时强调，云计算与大模型企业对 GPU 的需求没有任何放缓迹象，资本开支是转化为未来 AI 合同的必然过程。",
+      "conclusion": "【核心结论】AI 算力资本开支进入第二波超级周期，Blackwell 交付确定性极高，无泡沫破裂风险。",
+      "actionAdvice": "【操盘建议】坚定持股/逢回调分批低吸 NVDA、CRWV、NBIS 等算力总龙头及 300308 光模块核心链，不盲目猜顶。",
+      "confidence": "95% 高度确信",
+      "impact": "利好 NVDA, CRWV, NBIS, SMCI, 300308",
+      "targetTickers": ["NVDA", "CRWV", "NBIS", "300308"],
+      "sentiment": "BULLISH"
+    },
+    {
+      "time": "08-14 18:15 ET",
+      "source": "Bloomberg 专访",
+      "speaker": "Andy Jassy (亚马逊 CEO)",
+      "title": "Andy Jassy：AWS AI 资本开支正转化为长协合同，云利润率保持健康",
+      "summary": "亚马逊 CEO 针对市场对 Big Tech AI 开支的担忧回应称：Amazon 云与广告收益能闭环覆盖 AI 投入，无需担心收益率黑洞。",
+      "conclusion": "【核心结论】大模型商业化落地进入收割期，云厂商 Capex 具备真实造血能力与充沛现金流支撑。",
+      "actionAdvice": "【操盘建议】逢低配置现金流强劲的云巨头 (AMZN / MSFT / GOOGL)，规避缺乏实际商业闭环的纯概念股。",
+      "confidence": "90% 确信",
+      "impact": "利好 AMZN, AI 基建与算力链",
+      "targetTickers": ["AMZN", "MSFT", "GOOGL"],
+      "sentiment": "BULLISH"
+    },
+    {
+      "time": "08-14 15:00 ET",
+      "source": "美联储官方讲话",
+      "speaker": "Goolsbee (芝加哥联储主席)",
+      "title": "古尔斯比：服务业通胀降速需要更多数据确认，9 月降息门槛尚未满足",
+      "summary": "古尔斯比指出核心服务通胀仍具有粘性，美联储不会急于在 9 月降息，利率期货对降息的预期小幅收窄。",
+      "conclusion": "【核心结论】9 月激进降息预期降温，高利率维持更久（Higher for Longer）风险仍存。",
+      "actionAdvice": "【操盘建议】严控无利润、靠故事烧钱的极小盘概念股与高负债标的，仓位向高毛利、低净负债龙头倾斜。",
+      "confidence": "88% 确信",
+      "impact": "利空 高估值无利润成长股 / 高杠杆标的",
+      "targetTickers": ["IWM", "ARKK"],
+      "sentiment": "BEARISH"
+    },
+    {
+      "time": "08-14 12:40 ET",
+      "source": "X 空间与财报电话会",
+      "speaker": "Elon Musk (特斯拉 CEO)",
+      "title": "马斯克：得州储能工厂超级扩产，FSD V13 纯视觉进入商用拐点",
+      "summary": "马斯克表示特斯拉储能业务增速将大幅超越电动汽车，且 FSD V13 正在准备海外合规落地测试。",
+      "conclusion": "【核心结论】储能 Megapack 成为第二增长曲线提供基本面托底，智驾估值重估在即。",
+      "actionAdvice": "【操盘建议】波动幅度较大，适合采用网格或分批埋伏策略，关注 $300 整数关口支撑。",
+      "confidence": "86% 确信",
+      "impact": "利好 TSLA, 储能电池产业链 (300750)",
+      "targetTickers": ["TSLA", "300750"],
+      "sentiment": "BULLISH"
+    }
+  ]
+}

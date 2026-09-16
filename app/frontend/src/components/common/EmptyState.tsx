@@ -2,7 +2,7 @@ import React from 'react';
 
 interface EmptyStateProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   icon?: React.ReactNode;
   action?: {
     label: string;

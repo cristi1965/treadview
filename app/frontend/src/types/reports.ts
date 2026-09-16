@@ -32,4 +32,32 @@ export interface MarketEvent {
   description?: string;
   relatedTickers?: string[];
   earnings?: EarningsDetail[];
+  /** Jin10-style columns */
+  time?: string; // "08:30" ET
+  country?: string; // US / CN / EU / JP / UK / DE
+  importance?: number; // 1..3 stars
+  previous?: string;
+  forecast?: string;
+  actual?: string; // empty = 未公布
+}
+
+export type FlashKind = 'macro' | 'earnings' | 'company' | 'market' | 'calendar';
+
+export interface FlashItem {
+  id: string;
+  time: string; // RFC3339
+  title: string;
+  titleEn?: string;
+  body?: string;
+  bodyEn?: string;
+  importance: number; // 1 | 2 | 3
+  kind: FlashKind;
+  tickers?: string[];
+  source?: string;
+  link?: string;
+}
+
+export interface FlashResponse {
+  items: FlashItem[];
+  updatedAt: string;
 }

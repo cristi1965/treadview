@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useI18n } from '../i18n'
+import { BilingualMarkdown } from './BilingualMarkdown'
 
 interface ReportCardProps {
   title: string
@@ -10,6 +11,7 @@ interface ReportCardProps {
 }
 
 export const ReportCard: React.FC<ReportCardProps> = ({ title, icon, content, isLoading }) => {
+  const { t } = useI18n()
   const [isCollapsed, setIsCollapsed] = useState(false)
 
   if (!content && !isLoading) return null
@@ -38,12 +40,12 @@ export const ReportCard: React.FC<ReportCardProps> = ({ title, icon, content, is
       {!isCollapsed && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {content ? (
-            <div className="markdown-body" style={{ overflowX: 'auto' }}>
-              <ReactMarkdown>{content}</ReactMarkdown>
+            <div style={{ overflowX: 'auto' }}>
+              <BilingualMarkdown content={content} />
             </div>
           ) : (
             <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9rem' }}>
-              Waiting for agent feedback...
+              {t('report.waiting')}
             </div>
           )}
           
@@ -66,7 +68,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({ title, icon, content, is
                 display: 'inline-block',
                 animation: 'pulse-glow 1s infinite'
               }}></span>
-              Agent is streaming details in real-time...
+              {t('report.streaming')}
             </div>
           )}
         </div>

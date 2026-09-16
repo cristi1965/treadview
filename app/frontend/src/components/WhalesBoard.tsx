@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useWhalesStore } from '../stores/whalesStore'
+import { Avatar } from './Avatar'
 import {
   Search, Users, Landmark, UserCheck,
   X, Filter, ShieldAlert
@@ -10,7 +11,7 @@ export const WhalesBoard: React.FC = () => {
     gurus, currentGuru, currentGuruHoldings, congressTrades, consensusStocks, currentStockHolders,
     syncing, lastSync,
     fetchGurus, fetchGuruDetails, fetchCongressTrades, fetchConsensus, fetchStockHolders,
-    fetchSyncStatus, triggerSync, clearGuruDetails
+    fetchSyncStatus, clearGuruDetails
   } = useWhalesStore()
 
   // Tab State
@@ -66,10 +67,9 @@ export const WhalesBoard: React.FC = () => {
     )
   }, [partyFilter, typeFilter])
 
-  // 1. Initial setup and trigger background sync on mount
+  // Initial read-only setup. Administrative sync is explicit in Settings.
   useEffect(() => {
     fetchConsensus()
-    triggerSync()
     fetchSyncStatus()
   }, [])
 
@@ -170,12 +170,12 @@ export const WhalesBoard: React.FC = () => {
                 color: '#22c55e',
                 fontWeight: 500
               }}>
-                ✓ 已是最新 {lastSync && `(上次刷新: ${lastSync.split(' ')[1] || lastSync})`}
+                ✓ 披露快照已加载 {lastSync && `(同步: ${lastSync.split(' ')[1] || lastSync})`}
               </span>
             )}
           </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            实时跟进知名对冲基金 13F 申报及美国国会议员（Congress）最新内幕买卖逻辑
+            按披露期跟踪机构 13F 与可核验国会交易记录，不是实时交易信号
           </p>
         </div>
 
@@ -359,22 +359,12 @@ export const WhalesBoard: React.FC = () => {
                   }}
                 >
                   {/* Circular Avatar */}
-                  <div style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '50%',
-                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                    border: '2px solid rgba(249, 115, 22, 0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1rem',
-                    fontWeight: 700,
-                    color: '#f97316',
-                    flexShrink: 0
-                  }}>
-                    {guru.avatarCode}
-                  </div>
+                  <Avatar
+                    name={guru.name}
+                    slug={guru.slug || String(guru.id)}
+                    letter={guru.avatarCode}
+                    size={48}
+                  />
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', overflow: 'hidden' }}>
                     <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
@@ -691,21 +681,12 @@ export const WhalesBoard: React.FC = () => {
 
             {/* Profile Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.25rem' }}>
-              <div style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                border: '2px solid rgba(249, 115, 22, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.3rem',
-                fontWeight: 700,
-                color: '#f97316'
-              }}>
-                {currentGuru.avatarCode}
-              </div>
+              <Avatar
+                name={currentGuru.name}
+                slug={currentGuru.slug || String(currentGuru.id)}
+                letter={currentGuru.avatarCode}
+                size={60}
+              />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'white' }}>{currentGuru.name}</h3>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -836,15 +817,12 @@ export const WhalesBoard: React.FC = () => {
                       <tr key={index} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)', color: 'var(--text-primary)' }}>
                         <td style={{ padding: '0.65rem 0.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                            <div style={{
-                              width: '30px', height: '30px', borderRadius: '50%',
-                              backgroundColor: 'rgba(249, 115, 22, 0.05)',
-                              border: '1px solid rgba(249, 115, 22, 0.15)',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: '0.75rem', fontWeight: 'bold', color: '#f97316'
-                            }}>
-                              {item.avatarCode}
-                            </div>
+                            <Avatar
+                              name={item.guruName}
+                              slug={item.fundName}
+                              letter={item.avatarCode}
+                              size={30}
+                            />
                             <div>
                               <div style={{ fontWeight: 700 }}>{item.guruName}</div>
                               <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.fundName}</div>

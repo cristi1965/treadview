@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 
 function arg(name, fallback = '') {
@@ -20,9 +22,6 @@ const files = [
   { label: 'A-share public copy', path: 'app/frontend/public/data/a-market.json', freshness: 'ts', maxHours: warnHours },
   { label: 'Macro strip', path: 'app/backend/data/macro.json', freshness: 'ts', maxHours: warnHours },
   { label: 'Premarket movers', path: 'app/backend/data/premarket-movers.json', freshness: 'ts', maxHours: warnHours },
-  { label: 'Reports backend', path: 'app/backend/data/reports-live.json', freshness: 'mtime', maxHours: 96 },
-  { label: 'Reports public', path: 'app/frontend/public/data/reports.json', freshness: 'mtime', maxHours: 96 },
-  { label: 'ETF analyses', path: 'app/frontend/public/data/etf-analyses.json', freshness: 'updated', maxHours: 168 },
 ];
 
 function parseGeneratedAt(value) {
@@ -80,8 +79,14 @@ async function inspectFile(item) {
 }
 
 async function getJson(url) {
-  const res = await fetch(url, { cache: 'no-store' });
-  const text = await res.text();
+  const res = await fetchCompat(url);
+  const text = res.text;
+  const header = (name) => {
+    if (res.headers && typeof res.headers.get === 'function') {
+      return res.headers.get(name) || '';
+    }
+    return '';
+  };
   let json = null;
   try {
     json = JSON.parse(text);
@@ -89,10 +94,69 @@ async function getJson(url) {
   return {
     ok: res.ok,
     status: res.status,
-    source: res.headers.get('x-data-source') || '',
-    cacheControl: res.headers.get('cache-control') || '',
+    source: header('x-data-source'),
+    cacheControl: header('cache-control'),
+    stale: header('x-data-stale'),
     json,
   };
+}
+
+async function fetchCompat(url) {
+  if (typeof fetch === 'function') {
+    const res = await fetch(url, { cache: 'no-store' });
+    return {
+      ok: res.ok,
+      status: res.status,
+      headers: { get: (name) => res.headers.get(name) },
+      text: await res.text(),
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.request(
+      parsed,
+      {
+        method: 'GET',
+        timeout: 30000,
+        headers: { 'Cache-Control': 'no-store' },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const headers = Object.fromEntries(
+            Object.entries(res.headers).map(([key, value]) => [key.toLowerCase(), Array.isArray(value) ? value.join(', ') : String(value || '')])
+          );
+          const status = res.statusCode || 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            headers: { get: (name) => headers[String(name).toLowerCase()] || '' },
+            text: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error(`request timeout: ${url}`));
+    });
+    req.end();
+  });
+}
+
+function latestUSReportDate(now = new Date()) {
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  if (et.getHours() < 9) et.setDate(et.getDate() - 1);
+  while (et.getDay() === 0 || et.getDay() === 6) et.setDate(et.getDate() - 1);
+  return `${et.getFullYear()}-${String(et.getMonth() + 1).padStart(2, '0')}-${String(et.getDate()).padStart(2, '0')}`;
+}
+
+function latestReportDate(json) {
+  const reports = Array.isArray(json?.reports) ? json.reports : Array.isArray(json) ? json : [];
+  return reports.reduce((max, report) => (report?.date > max ? report.date : max), '');
 }
 
 async function inspectApi() {
@@ -104,19 +168,43 @@ async function inspectApi() {
     '/api/macro',
     '/api/premarket-movers',
     '/api/quote?syms=NVDA,SPY,600519',
+    '/api/reports?limit=5',
+    '/api/etf/sectors',
+    '/api/stocks?market=hk&limit=1',
+    '/data/market.json',
+    '/data/a-market.json',
+    '/data/macro.json',
+    '/data/premarket-movers.json',
+    '/data/us-panel-summary.json',
+    '/data/reports.json',
+    '/data/etf-analyses.json',
   ]) {
     try {
       const res = await getJson(`${baseUrl}${endpoint}`);
+      const staleBlocked =
+        (endpoint === '/api/etf/sectors' || endpoint === '/data/etf-analyses.json' || endpoint === '/data/reports.json') &&
+        (res.status === 410 || res.status === 503) &&
+        res.stale === 'true';
+      const contractRejected = endpoint === '/api/stocks?market=hk&limit=1' && res.status === 400;
+      const reportDate = endpoint.startsWith('/api/reports') ? latestReportDate(res.json) : '';
+      const reportFresh = endpoint.startsWith('/api/reports') ? reportDate >= latestUSReportDate() : true;
       checks.push({
         endpoint,
-        ok: res.ok,
+        ok: res.ok || staleBlocked || contractRejected,
         status: res.status,
         source: res.source,
         cacheControl: res.cacheControl,
+        staleBlocked,
+        contractRejected,
+        reportDate,
+        reportFresh,
         quoteSources: res.json?.sources,
         missing: res.json?.missing,
         ts: res.json?.ts,
       });
+      if (endpoint.startsWith('/api/reports') && !reportFresh) {
+        checks[checks.length - 1].ok = false;
+      }
     } catch (error) {
       checks.push({ endpoint, ok: false, error: error instanceof Error ? error.message : String(error) });
     }

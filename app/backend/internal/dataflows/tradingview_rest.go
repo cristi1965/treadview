@@ -21,15 +21,18 @@ type TVRestClient struct {
 
 // TVQuoteData holds a single quote data point from the scanner.
 type TVQuoteData struct {
-	Symbol    string
-	Price     float64
-	Change    float64
-	ChangePct float64
-	Volume    float64
-	High      float64
-	Low       float64
-	Open      float64
-	PrevClose float64
+	Symbol     string
+	Price      float64
+	Change     float64
+	ChangePct  float64
+	Volume     float64
+	High       float64
+	Low        float64
+	Open       float64
+	PrevClose  float64
+	DataTime   time.Time
+	UpdateMode string
+	SourceURL  string
 }
 
 // NewTVRestClient creates a TradingView REST API client.
@@ -59,8 +62,9 @@ func (c *TVRestClient) GetRealTimeQuotes(tickers []string) ([]TVQuoteData, error
 		tvSymbols[i] = toTVSymbol(t)
 	}
 
-	// close, change(%), change_abs($), volume, high, low, open, previous_close
-	columns := []string{"close", "change", "change_abs", "volume", "high", "low", "open", "previous_close"}
+	// last_update_time is provider observation time. It must not be replaced by
+	// request completion time when downstream freshness is assessed.
+	columns := []string{"close", "change", "change_abs", "volume", "high", "low", "open", "previous_close", "last_update_time", "update_mode"}
 
 	payload := map[string]any{
 		"symbols": map[string]any{
@@ -98,8 +102,8 @@ func (c *TVRestClient) GetRealTimeQuotes(tickers []string) ([]TVQuoteData, error
 	var result struct {
 		TotalCount int `json:"totalCount"`
 		Data       []struct {
-			Symbol string    `json:"s"`
-			Values []float64 `json:"d"`
+			Symbol string            `json:"s"`
+			Values []json.RawMessage `json:"d"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
@@ -108,36 +112,45 @@ func (c *TVRestClient) GetRealTimeQuotes(tickers []string) ([]TVQuoteData, error
 
 	log.Printf("[TV REST] Got %d/%d results for %v", len(result.Data), result.TotalCount, tickers)
 
-	// columns: close, change(%), change_abs($), volume, high, low, open, previous_close
+	// columns: close, change(%), change_abs($), volume, high, low, open,
+	// previous_close, last_update_time, update_mode
 	var quotes []TVQuoteData
 	for _, entry := range result.Data {
-		q := TVQuoteData{Symbol: entry.Symbol}
+		q := TVQuoteData{Symbol: entry.Symbol, SourceURL: tvScannerURL}
 		v := entry.Values
 		if len(v) > 0 {
-			q.Price = v[0]
+			q.Price = rawFloat(v[0])
 		}
 		if len(v) > 1 {
-			q.ChangePct = v[1]
+			q.ChangePct = rawFloat(v[1])
 		}
 		if len(v) > 2 {
-			q.Change = v[2]
+			q.Change = rawFloat(v[2])
 		}
 		if len(v) > 3 {
-			q.Volume = v[3]
+			q.Volume = rawFloat(v[3])
 		}
 		if len(v) > 4 {
-			q.High = v[4]
+			q.High = rawFloat(v[4])
 		}
 		if len(v) > 5 {
-			q.Low = v[5]
+			q.Low = rawFloat(v[5])
 		}
 		if len(v) > 6 {
-			q.Open = v[6]
+			q.Open = rawFloat(v[6])
 		}
-		if len(v) > 7 && v[7] > 0 {
-			q.PrevClose = v[7]
+		if len(v) > 7 && rawFloat(v[7]) > 0 {
+			q.PrevClose = rawFloat(v[7])
 		} else if q.Price > 0 && q.ChangePct != -100 {
 			q.PrevClose = q.Price / (1.0 + q.ChangePct/100.0)
+		}
+		if len(v) > 8 {
+			if seconds := rawFloat(v[8]); seconds > 0 {
+				q.DataTime = time.Unix(int64(seconds), 0).UTC()
+			}
+		}
+		if len(v) > 9 {
+			_ = json.Unmarshal(v[9], &q.UpdateMode)
 		}
 		quotes = append(quotes, q)
 	}
@@ -145,10 +158,20 @@ func (c *TVRestClient) GetRealTimeQuotes(tickers []string) ([]TVQuoteData, error
 	return quotes, nil
 }
 
+func rawFloat(raw json.RawMessage) float64 {
+	var value float64
+	_ = json.Unmarshal(raw, &value)
+	return value
+}
+
 // FormatQuoteForLLM formats a single quote as text for LLM consumption.
 func FormatQuoteForLLM(q TVQuoteData, ticker string) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("**REAL-TIME QUOTE: %s** (via TradingView)\n", ticker))
+	sb.WriteString(fmt.Sprintf("- Source URL: %s\n", q.SourceURL))
+	if !q.DataTime.IsZero() {
+		sb.WriteString(fmt.Sprintf("- Data Time: %s\n", q.DataTime.UTC().Format(time.RFC3339)))
+	}
 	sb.WriteString(fmt.Sprintf("- Current Price: $%.2f\n", q.Price))
 	if q.Change != 0 {
 		sb.WriteString(fmt.Sprintf("- Change: $%.2f (%.2f%%)\n", q.Change, q.ChangePct))

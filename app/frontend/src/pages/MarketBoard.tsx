@@ -1,15 +1,29 @@
-import React, { useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { useCommandStore } from '../stores/commandStore'
 import { useWhalesStore } from '../stores/whalesStore'
 import { WhalesBoard } from '../components/WhalesBoard'
+import { get as apiGet } from '../utils/api'
+import { fetchLiveQuotes, startQuotePolling, type QuoteMap } from '../utils/liveQuotes'
 import {
   TrendingUp, Star, Calendar, AlertTriangle,
   Info, Moon, User, Users, Layers, Activity
 } from 'lucide-react'
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, XAxis, YAxis, Tooltip,
   BarChart, Bar, Cell
 } from 'recharts'
+
+type MarketQuote = {
+  price?: number
+  pct?: number
+  changePercent?: number
+  sector?: string
+}
+
+type MarketResponse = {
+  quotes?: Record<string, MarketQuote>
+  source?: string
+}
 
 export const MarketBoard: React.FC = () => {
   const {
@@ -33,6 +47,8 @@ export const MarketBoard: React.FC = () => {
   const [pnl, setPnl] = useState('')
   const [emotionScore, setEmotionScore] = useState(5)
   const [notes, setNotes] = useState('')
+  const [tradeSaving, setTradeSaving] = useState(false)
+  const [tradeSaveError, setTradeSaveError] = useState('')
 
   // Event Form State
   const [eventName, setEventName] = useState('')
@@ -41,6 +57,8 @@ export const MarketBoard: React.FC = () => {
   const [eventStars, setEventStars] = useState(1)
   const [eventPrevious, setEventPrevious] = useState('')
   const [eventConsensus, setEventConsensus] = useState('')
+  const [eventSaving, setEventSaving] = useState(false)
+  const [eventSaveError, setEventSaveError] = useState('')
 
   // Position Sizer State
   const [totalCapital, setTotalCapital] = useState(100000)
@@ -48,32 +66,55 @@ export const MarketBoard: React.FC = () => {
   const [sizerEntry, setSizerEntry] = useState(150)
   const [sizerStop, setSizerStop] = useState(145)
 
-  // Live Night Market State
-  const [nightMarket, setNightMarket] = useState([
-    { name: '富时中国A50期指', value: 12345.5, change: 0.45, status: 'stable' },
-    { name: '纳斯达克100期指', value: 18920.2, change: 0.62, status: 'stable' },
-    { name: '标普500期指', value: 5510.8, change: 0.35, status: 'stable' },
-    { name: '道指期指', value: 39850.5, change: 0.12, status: 'stable' }
-  ])
+  const [indexQuotes, setIndexQuotes] = useState<QuoteMap>({})
+  const [marketSnapshot, setMarketSnapshot] = useState<MarketResponse | null>(null)
+  const [marketError, setMarketError] = useState('')
 
-  // Mock static data for Capital Flow
-  const capitalFlowData = [
-    { time: '09:30', Inflow: 120, Outflow: 100, Net: 20 },
-    { time: '10:30', Inflow: 250, Outflow: 280, Net: -30 },
-    { time: '11:30', Inflow: 410, Outflow: 380, Net: 30 },
-    { time: '13:30', Inflow: 580, Outflow: 520, Net: 60 },
-    { time: '14:30', Inflow: 790, Outflow: 720, Net: 70 },
-    { time: '15:30', Inflow: 980, Outflow: 890, Net: 90 }
+  const indexSymbols = [
+    { symbol: 'QQQ', name: '纳斯达克100代理' },
+    { symbol: 'SPY', name: '标普500代理' },
+    { symbol: 'DIA', name: '道指代理' },
+    { symbol: 'ASHR', name: 'A股离岸代理' },
   ]
 
-  // Mock static data for Sector Concentration
-  const sectorData = [
-    { name: '人工智能/科技', value: 38, color: '#6366f1' },
-    { name: '金融与银行', value: 22, color: '#3b82f6' },
-    { name: '生物医药', value: 16, color: '#10b981' },
-    { name: '新能源/半导体', value: 14, color: '#f59e0b' },
-    { name: '军工/原材料', value: 10, color: '#f43f5e' }
-  ]
+  const marketQuotes = useMemo(() => Object.values(marketSnapshot?.quotes || {}), [marketSnapshot])
+  const marketBreadthData = useMemo(() => {
+    let up = 0
+    let down = 0
+    let flat = 0
+    for (const quote of marketQuotes) {
+      const pct = quote.pct ?? quote.changePercent ?? 0
+      if (pct > 0.05) up += 1
+      else if (pct < -0.05) down += 1
+      else flat += 1
+    }
+    return [
+      { name: '上涨', value: up, color: 'var(--color-success)' },
+      { name: '下跌', value: down, color: 'var(--color-danger)' },
+      { name: '平盘', value: flat, color: 'var(--text-muted)' },
+    ]
+  }, [marketQuotes])
+
+  const sectorData = useMemo(() => {
+    const sectorMap = new Map<string, { total: number; count: number }>()
+    for (const quote of marketQuotes) {
+      const sector = quote.sector || '未分类'
+      const pct = quote.pct ?? quote.changePercent
+      if (typeof pct !== 'number') continue
+      const bucket = sectorMap.get(sector) || { total: 0, count: 0 }
+      bucket.total += pct
+      bucket.count += 1
+      sectorMap.set(sector, bucket)
+    }
+    return Array.from(sectorMap.entries())
+      .map(([name, value]) => ({
+        name,
+        value: Number((value.total / Math.max(1, value.count)).toFixed(2)),
+        color: value.total >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+      }))
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+      .slice(0, 8)
+  }, [marketQuotes])
 
 
 
@@ -85,24 +126,21 @@ export const MarketBoard: React.FC = () => {
     fetchCongressTrades()
   }, [])
 
-  // Night Market tick simulator
   useEffect(() => {
-    const interval = setInterval(() => {
-      setNightMarket(prev => prev.map(item => {
-        const rand = (Math.random() - 0.5) * 0.1 // -0.05% to +0.05%
-        const newValue = item.value * (1 + rand / 100)
-        const newChange = item.change + rand
-        const status = rand > 0 ? 'up' : 'down'
-        return {
-          ...item,
-          value: parseFloat(newValue.toFixed(1)),
-          change: parseFloat(newChange.toFixed(2)),
-          status
-        }
-      }))
-    }, 3000)
-
-    return () => clearInterval(interval)
+    return startQuotePolling(async () => {
+      try {
+        const [quotes, market] = await Promise.all([
+          fetchLiveQuotes(indexSymbols.map((item) => item.symbol)),
+          apiGet<MarketResponse>('/api/market'),
+        ])
+        setIndexQuotes(quotes)
+        setMarketSnapshot(market)
+        setMarketError('')
+      } catch (err) {
+        setMarketError(err instanceof Error ? err.message : '真实行情暂不可用')
+        setMarketSnapshot(null)
+      }
+    }, 20_000)
   }, [])
 
   // Auto calculate PnL in form
@@ -120,48 +158,58 @@ export const MarketBoard: React.FC = () => {
 
   const handleAddTrade = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!symbol || !entryPrice || !exitPrice || !shares) return
-
-    await addTrade({
-      symbol: symbol.toUpperCase(),
-      direction,
-      entryPrice: Number(entryPrice),
-      exitPrice: Number(exitPrice),
-      shares: Number(shares),
-      pnl: Number(pnl),
-      emotionScore: Number(emotionScore),
-      notes
-    })
-
-    // Reset Form
-    setSymbol('')
-    setEntryPrice('')
-    setExitPrice('')
-    setShares('')
-    setPnl('')
-    setNotes('')
+    if (!symbol || !entryPrice || !exitPrice || !shares || tradeSaving) return
+    setTradeSaving(true)
+    setTradeSaveError('')
+    try {
+      await addTrade({
+        symbol: symbol.toUpperCase(),
+        direction,
+        entryPrice: Number(entryPrice),
+        exitPrice: Number(exitPrice),
+        shares: Number(shares),
+        pnl: Number(pnl),
+        emotionScore: Number(emotionScore),
+        notes
+      })
+      setSymbol('')
+      setEntryPrice('')
+      setExitPrice('')
+      setShares('')
+      setPnl('')
+      setNotes('')
+    } catch (error) {
+      setTradeSaveError(error instanceof Error ? error.message : 'Paper 复盘记录保存失败，请重试')
+    } finally {
+      setTradeSaving(false)
+    }
   }
 
   const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!eventName || !eventDate) return
-
-    await addEvent({
-      name: eventName,
-      date: eventDate,
-      time: eventTime || '00:00',
-      stars: Number(eventStars),
-      previous: eventPrevious,
-      consensus: eventConsensus
-    })
-
-    // Reset Form
-    setEventName('')
-    setEventDate('')
-    setEventTime('')
-    setEventStars(1)
-    setEventPrevious('')
-    setEventConsensus('')
+    if (!eventName || !eventDate || eventSaving) return
+    setEventSaving(true)
+    setEventSaveError('')
+    try {
+      await addEvent({
+        name: eventName,
+        date: eventDate,
+        time: eventTime || '00:00',
+        stars: Number(eventStars),
+        previous: eventPrevious,
+        consensus: eventConsensus
+      })
+      setEventName('')
+      setEventDate('')
+      setEventTime('')
+      setEventStars(1)
+      setEventPrevious('')
+      setEventConsensus('')
+    } catch (error) {
+      setEventSaveError(error instanceof Error ? error.message : '宏观警报保存失败，请重试')
+    } finally {
+      setEventSaving(false)
+    }
   }
 
   // Position Sizer calculation
@@ -262,11 +310,14 @@ export const MarketBoard: React.FC = () => {
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Moon size={18} style={{ color: 'var(--color-info)' }} />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>夜盘指数期货 (Live)</h3>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>实时指数代理</h3>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                {nightMarket.map((item, index) => (
-                  <div key={index} style={{
+                {indexSymbols.map((item) => {
+                  const quote = indexQuotes[item.symbol]
+                  const pct = quote?.pct ?? 0
+                  return (
+                  <div key={item.symbol} style={{
                     backgroundColor: 'rgba(255,255,255,0.02)',
                     border: '1px solid var(--border-color)',
                     padding: '1rem',
@@ -285,21 +336,21 @@ export const MarketBoard: React.FC = () => {
                       top: 0,
                       bottom: 0,
                       width: '4px',
-                      backgroundColor: item.change >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
+                      backgroundColor: pct >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
                     }} />
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{item.name}</span>
                     <span style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                      {item.value.toLocaleString()}
+                      {quote?.price ? quote.price.toLocaleString() : '--'}
                     </span>
                     <span style={{
                       fontSize: '0.85rem',
                       fontWeight: 600,
-                      color: item.change >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
+                      color: pct >= 0 ? 'var(--color-success)' : 'var(--color-danger)'
                     }}>
-                      {item.change >= 0 ? '▲' : '▼'} {Math.abs(item.change)}%
+                      {quote?.price ? `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%` : '等待实时行情'}
                     </span>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
 
@@ -308,20 +359,29 @@ export const MarketBoard: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <TrendingUp size={18} style={{ color: 'var(--color-success)' }} />
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>主力资金流向趋势 (M)</h3>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>市场涨跌宽度</h3>
                 </div>
-                <span className="badge badge-buy">主力净流入: +90.00M</span>
+                <span className="badge badge-buy">样本: {marketQuotes.length}</span>
               </div>
               <div style={{ width: '100%', height: 180 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={capitalFlowData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} />
-                    <YAxis stroke="var(--text-muted)" fontSize={10} />
-                    <Tooltip contentStyle={{ backgroundColor: 'var(--bg-dark)', borderColor: 'var(--border-color)' }} />
-                    <Area type="monotone" dataKey="Inflow" name="流入" stroke="var(--color-success)" fill="rgba(16, 185, 129, 0.1)" strokeWidth={2} />
-                    <Area type="monotone" dataKey="Outflow" name="流出" stroke="var(--color-danger)" fill="rgba(244, 63, 94, 0.1)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {marketQuotes.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={marketBreadthData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={10} />
+                      <YAxis stroke="var(--text-muted)" fontSize={10} />
+                      <Tooltip contentStyle={{ backgroundColor: 'var(--bg-dark)', borderColor: 'var(--border-color)' }} />
+                      <Bar dataKey="value" name="数量" radius={[4, 4, 0, 0]}>
+                        {marketBreadthData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {marketError || '等待真实行情数据'}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -337,21 +397,27 @@ export const MarketBoard: React.FC = () => {
             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Layers size={18} style={{ color: 'var(--color-primary)' }} />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>行业板块资金集中度 (%)</h3>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white' }}>行业实时表现 (%)</h3>
               </div>
               <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sectorData} layout="vertical" margin={{ top: 10, right: 10, left: 30, bottom: 0 }}>
-                    <XAxis type="number" stroke="var(--text-muted)" fontSize={10} />
-                    <YAxis type="category" dataKey="name" stroke="var(--text-muted)" fontSize={10} width={90} />
-                    <Tooltip contentStyle={{ backgroundColor: 'var(--bg-dark)', borderColor: 'var(--border-color)' }} />
-                    <Bar dataKey="value" name="权重 %" radius={[0, 4, 4, 0]}>
-                      {sectorData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {sectorData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={sectorData} layout="vertical" margin={{ top: 10, right: 10, left: 30, bottom: 0 }}>
+                      <XAxis type="number" stroke="var(--text-muted)" fontSize={10} />
+                      <YAxis type="category" dataKey="name" stroke="var(--text-muted)" fontSize={10} width={90} />
+                      <Tooltip contentStyle={{ backgroundColor: 'var(--bg-dark)', borderColor: 'var(--border-color)' }} />
+                      <Bar dataKey="value" name="平均涨跌幅 %" radius={[0, 4, 4, 0]}>
+                        {sectorData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    等待真实行业行情
+                  </div>
+                )}
               </div>
             </div>
 
@@ -739,8 +805,9 @@ export const MarketBoard: React.FC = () => {
                   </select>
                 </div>
 
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                  保存宏观警报
+                {eventSaveError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.75rem' }}>保存失败：{eventSaveError}</p>}
+                <button type="submit" disabled={eventSaving} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                  {eventSaving ? '保存中…' : '保存宏观警报'}
                 </button>
               </form>
 
@@ -911,8 +978,9 @@ export const MarketBoard: React.FC = () => {
                   />
                 </div>
 
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-                  录入交易记录
+                {tradeSaveError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.75rem' }}>保存失败：{tradeSaveError}</p>}
+                <button type="submit" disabled={tradeSaving} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                  {tradeSaving ? '保存中…' : '保存 Paper 复盘记录'}
                 </button>
               </form>
 

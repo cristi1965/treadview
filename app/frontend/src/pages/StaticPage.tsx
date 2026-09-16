@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { StockGodShell } from '../components/layout/StockGodShell';
+import { useI18n } from '../i18n';
 
 type StaticKind = 'about' | 'terms' | 'privacy' | 'how-to-buy';
 
@@ -16,8 +17,10 @@ const aboutPersonas = [
   { name: '情绪', en: 'Sentiment', body: '资金面 + 题材 + 市场情绪,谁在被买、热度在哪。' },
 ];
 
-const HowToBuyPage: React.FC = () => (
-  <StockGodShell title="如何买美股">
+const HowToBuyPage: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <StockGodShell title={t('static.howtoTitle')}>
     <div className="mx-auto max-w-[900px] space-y-5">
       <header className="border-b border-line pb-5">
         <div className="text-[11px] font-medium uppercase tracking-wider text-faint">GUIDE · 2026.06 更新</div>
@@ -143,22 +146,25 @@ const HowToBuyPage: React.FC = () => (
       </section>
     </div>
   </StockGodShell>
-);
+  );
+};
 
-const AboutPage: React.FC = () => (
-  <StockGodShell title="关于 · 方法论">
+const AboutPage: React.FC = () => {
+  const { t } = useI18n();
+  return (
+  <StockGodShell title={t('static.aboutTitle')}>
     <div className="mx-auto max-w-[900px] space-y-5">
       <header className="border-b border-line pb-5">
-        <h1 className="text-[26px] font-semibold tracking-tight text-ink">关于 · 方法论</h1>
+        <h1 className="text-[26px] font-semibold tracking-tight text-ink">{t('static.aboutTitle')}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          你不是神,但神陪你一起看股票。这是一个把公开数据和多种投资方法论可视化的研究工具 —— 帮你更快看懂一只票,而不是替你做决定。
+          {t('static.aboutLead')}
         </p>
       </header>
 
       <section className="rounded-xl border border-line bg-surface p-5">
-        <h2 className="text-sm font-semibold text-ink">五方判读是谁</h2>
+        <h2 className="text-sm font-semibold text-ink">{t('static.who')}</h2>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          同一只票,五种互不相同的投资框架各自独立打分(0–100)。它们用不同的尺子,所以经常打架 —— 而分歧本身就是信息:五方都点头的票稳,五方吵翻的票值得你亲自研究。
+          {t('static.whoBody')}
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {aboutPersonas.map((p) => (
@@ -188,7 +194,7 @@ const AboutPage: React.FC = () => (
       <section className="rounded-xl border border-line bg-surface p-5">
         <h2 className="text-sm font-semibold text-ink">数据哪来 · 多久更新</h2>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          实时价格、市盈率等盘面数据来自第三方公开来源(腾讯行情、Yahoo、Nasdaq、新浪),页面打开时实时拉取;每个交易日收盘后自动刷新一次行情快照。五方判读由 AI 深度生成,按批次更新,不是每分钟变动。数据可能延迟或有误,按“现状”提供。
+          价格、市盈率等盘面数据来自第三方公开来源（腾讯行情、Yahoo、Nasdaq、新浪）。页面优先读取当前 API 响应，不可用时会显示已标注数据时间的本地快照；只有管理员可在设置页手动刷新快照。五方判读由 AI 按批次生成，不是实时买卖信号。数据可能延迟或有误，以页面的来源、数据时间和过期标识为准。
         </p>
       </section>
 
@@ -199,17 +205,18 @@ const AboutPage: React.FC = () => (
           <li>点开个股,看五方各自的判读、分歧焦点、产业链定位和盘面数据。</li>
           <li>在列表里按“均分”或“分歧”排序、按某一方筛选,定位你想深挖的票。</li>
         </ol>
-        <Link to="/" className="mt-4 inline-flex rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/15">
-          开始看 →
+        <Link to="/market" className="mt-4 inline-flex rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent hover:bg-accent/15">
+          {t('static.start')}
         </Link>
         <div className="mt-4 flex flex-wrap gap-3 text-xs text-faint">
-          <Link to="/terms" className="hover:text-ink">服务条款</Link>
-          <Link to="/privacy" className="hover:text-ink">隐私政策</Link>
+          <Link to="/terms" className="hover:text-ink">{t('home.terms')}</Link>
+          <Link to="/privacy" className="hover:text-ink">{t('home.privacy')}</Link>
         </div>
       </section>
     </div>
   </StockGodShell>
-);
+  );
+};
 
 const copy: Record<'terms' | 'privacy', { title: string; subtitle: string; sections: Array<{ title: string; body: string[] }> }> = {
   terms: {
@@ -334,7 +341,7 @@ export const StaticPage: React.FC<StaticPageProps> = ({ kind }) => {
         </div>
 
         <footer className="mt-10 border-t border-line pt-5 text-center text-xs text-faint">
-          <Link to="/" className="text-accent hover:underline">回热力图</Link>
+          <Link to="/market" className="text-accent hover:underline">回实验行情</Link>
           <span className="mx-2">·</span>
           Not a Stock God · Not Financial Advice
         </footer>
@@ -343,18 +350,21 @@ export const StaticPage: React.FC<StaticPageProps> = ({ kind }) => {
   );
 };
 
-export const NotFoundPage: React.FC = () => (
+export const NotFoundPage: React.FC = () => {
+  const { t } = useI18n();
+  return (
   <StockGodShell title="404">
     <div className="flex min-h-[520px] items-center justify-center text-center">
       <div>
         <p className="font-mono text-6xl font-semibold tracking-tight text-accent">404</p>
-        <h1 className="mt-4 text-xl font-semibold text-ink">没找到这个页面</h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted">链接可能失效,或股票代码不存在。</p>
+        <h1 className="mt-4 text-xl font-semibold text-ink">{t('static.nf')}</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-muted">{t('static.nfSub')}</p>
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-          <Link to="/" className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/15">回热力图</Link>
-          <Link to="/scan" className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-muted transition hover:text-ink">去列表找票</Link>
+          <Link to="/market" className="rounded-lg border border-accent/30 px-4 py-2 text-sm font-semibold text-accent">{t('stock.backHeat')}</Link>
+          <Link to="/scan" className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-muted transition hover:text-ink">{t('stock.goScan')}</Link>
         </div>
       </div>
     </div>
   </StockGodShell>
-);
+  );
+};

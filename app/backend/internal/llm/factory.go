@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	ProviderGemini  = "gemini"
-	ProviderDeepSeek = "deepseek"
-	ProviderOpenAI   = "openai"
+	ProviderDual         = "dual"
+	ProviderGemini       = "gemini"
+	ProviderDeepSeek     = "deepseek"
+	ProviderOpenAI       = "openai"
 	ProviderOpenAICompat = "openai_compatible"
 )
 
@@ -23,6 +24,19 @@ func NewClient(cfg *config.Config) (LLMClient, error) {
 	}
 
 	switch cfg.LLMProvider {
+	case ProviderDual:
+		if cfg.DeepSeekAPIKey == "" || cfg.GoogleAPIKey == "" {
+			return nil, fmt.Errorf("dual provider requires both DEEPSEEK_API_KEY and GOOGLE_API_KEY")
+		}
+		deepSeek := NewDeepSeekClient(cfg.DeepSeekAPIKey, cfg.LLMBackendURL, cfg.QuickThinkLLM, cfg.QuickThinkLLM, temperature)
+		geminiCfg := *cfg
+		geminiCfg.LLMProvider = ProviderGemini
+		geminiCfg.QuickThinkLLM = cfg.DeepThinkLLM
+		gemini, err := NewGeminiClient(&geminiCfg)
+		if err != nil {
+			return nil, err
+		}
+		return NewNamedRoutedClient(deepSeek, gemini, "deepseek/"+cfg.QuickThinkLLM, "gemini/"+cfg.DeepThinkLLM), nil
 	case ProviderGemini, "google":
 		log.Printf("[LLM] Using Gemini provider (model: deep=%s, quick=%s)", cfg.DeepThinkLLM, cfg.QuickThinkLLM)
 		return NewGeminiClient(cfg)

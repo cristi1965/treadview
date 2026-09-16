@@ -1,0 +1,4 @@
+interface:
+  display_name: "Website Full Replica"
+  short_description: "Recover and verify website parity."
+  default_prompt: "Use $website-full-replica to capture a reference website, compare local behavior, and produce a prioritized implementation plan."

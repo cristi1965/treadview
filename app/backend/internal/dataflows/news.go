@@ -34,19 +34,50 @@ func NewNewsClient() *NewsClient {
 // GetTickerNews fetches news for a specific ticker.
 func (c *NewsClient) GetTickerNews(ticker string, limit int) ([]NewsArticle, error) {
 	// Yahoo Finance RSS feed
-	u := fmt.Sprintf("https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=US&lang=en-US",
-		url.QueryEscape(ticker))
+	u := TickerNewsSourceURL(ticker)
 
 	articles, err := c.fetchRSS(u, "Yahoo Finance")
 	if err != nil {
-		// Fallback: return empty with no error
-		return []NewsArticle{}, nil
+		return nil, err
 	}
 
 	if len(articles) > limit {
 		articles = articles[:limit]
 	}
+	if len(articles) == 0 {
+		return nil, fmt.Errorf("Yahoo Finance RSS returned no articles for %s", ticker)
+	}
 	return articles, nil
+}
+
+func TickerNewsSourceURL(ticker string) string {
+	return fmt.Sprintf("https://feeds.finance.yahoo.com/rss/2.0/headline?s=%s&region=US&lang=en-US",
+		url.QueryEscape(ticker))
+}
+
+// GetTickerNewsFromGoogle provides a dated RSS fallback when Yahoo's ticker
+// feed is unavailable or has no articles inside the requested PIT window.
+func (c *NewsClient) GetTickerNewsFromGoogle(ticker, companyName string, limit int) ([]NewsArticle, string, error) {
+	u := TickerGoogleNewsSourceURL(ticker, companyName)
+	articles, err := c.fetchRSS(u, "Google News")
+	if err != nil {
+		return nil, u, err
+	}
+	if len(articles) > limit {
+		articles = articles[:limit]
+	}
+	if len(articles) == 0 {
+		return nil, u, fmt.Errorf("Google News RSS returned no articles for %s", ticker)
+	}
+	return articles, u, nil
+}
+
+func TickerGoogleNewsSourceURL(ticker, companyName string) string {
+	query := strings.TrimSpace(ticker)
+	if companyName = strings.TrimSpace(companyName); companyName != "" {
+		query += ` OR "` + companyName + `"`
+	}
+	return fmt.Sprintf("https://news.google.com/rss/search?q=%s&hl=en-US&gl=US&ceid=US:en", url.QueryEscape(query))
 }
 
 // GetGlobalNews fetches global/macro news using search queries.
@@ -85,6 +116,9 @@ func FormatNewsForLLM(articles []NewsArticle, header string) string {
 		}
 		if a.Source != "" {
 			sb.WriteString(fmt.Sprintf("   Source: %s\n", a.Source))
+		}
+		if a.Link != "" {
+			sb.WriteString(fmt.Sprintf("   Link: %s\n", a.Link))
 		}
 		if a.Description != "" {
 			desc := a.Description

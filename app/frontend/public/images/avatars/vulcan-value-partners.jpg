@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="bgGrad_VV" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#312e81" />
+    </radialGradient>
+    <linearGradient id="ringGrad_VV" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0.3" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer background circle -->
+  <circle cx="100" cy="100" r="95" fill="url(#bgGrad_VV)"/>
+  
+  <!-- Sleek metallic outer ring -->
+  <circle cx="100" cy="100" r="92" fill="none" stroke="url(#ringGrad_VV)" stroke-width="4"/>
+  <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+
+  <!-- Inner subtle pattern circle -->
+  <circle cx="100" cy="100" r="80" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Main Monogram Text -->
+  <text x="100" y="106" 
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+        font-size="66" 
+        font-weight="900" 
+        fill="#e0e7ff" 
+        text-anchor="middle" 
+        letter-spacing="1">
+    VV
+  </text>
+
+  
+  <rect x="45" y="132" width="110" height="22" rx="11" fill="rgba(0,0,0,0.4)" />
+  <text x="100" y="147" 
+        font-family="system-ui, -apple-system, sans-serif" 
+        font-size="10" 
+        font-weight="700" 
+        fill="#6366f1" 
+        text-anchor="middle" 
+        letter-spacing="0.5">
+    13F GURU
+  </text>
+</svg>

@@ -32,6 +32,94 @@
   --shadow-glow: 0 0 15px rgba(249, 115, 22, 0.2);
 }
 
+.settings-health-cards {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .settings-health-table {
+    display: none;
+  }
+
+  .settings-health-cards {
+    display: grid;
+    gap: 10px;
+  }
+
+  .settings-health-card {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .settings-health-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .settings-health-card code {
+    display: block;
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .settings-health-card dl {
+    display: grid;
+    gap: 7px;
+    margin: 10px 0 0;
+  }
+
+  .settings-health-card dl div {
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .settings-health-card dt {
+    color: var(--text-muted);
+  }
+
+  .settings-health-card dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+  }
+
+  .settings-health-card p,
+  .settings-health-empty {
+    margin: 9px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .settings-health-badge {
+    flex: none;
+    padding: 2px 7px;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #6ee7b7;
+    font-size: 11px;
+  }
+
+  .settings-health-badge--stale {
+    border-color: rgba(251, 191, 36, 0.35);
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+  }
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -45,6 +133,75 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+/* Wails macOS：透明标题栏 + FullSizeContent 时，用 CSS 声明拖动区 */
+html.wails-desktop {
+  --wails-traffic-inset: 28px;
+  --wails-chrome-bg: #08090b;
+}
+
+html.wails-desktop.stockgod-light {
+  --wails-chrome-bg: #f4f1ed;
+}
+
+html.wails-desktop,
+html.wails-desktop body,
+html.wails-desktop #root {
+  background-color: var(--wails-chrome-bg);
+}
+
+html.wails-desktop .wails-drag {
+  --wails-draggable: drag;
+}
+
+html.wails-desktop .wails-no-drag,
+html.wails-desktop .wails-drag a,
+html.wails-desktop .wails-drag button,
+html.wails-desktop .wails-drag input,
+html.wails-desktop .wails-drag textarea,
+html.wails-desktop .wails-drag select,
+html.wails-desktop .wails-drag label,
+html.wails-desktop .wails-drag [role='button'],
+html.wails-desktop .wails-titlebar a,
+html.wails-desktop .wails-titlebar button,
+html.wails-desktop .wails-titlebar input,
+html.wails-desktop .wails-titlebar textarea,
+html.wails-desktop .wails-titlebar select,
+html.wails-desktop .wails-titlebar label,
+html.wails-desktop .wails-titlebar [role='button'],
+html.wails-desktop .wails-sidebar a,
+html.wails-desktop .wails-sidebar button,
+html.wails-desktop .wails-sidebar input,
+html.wails-desktop .wails-mobile-top a,
+html.wails-desktop .wails-mobile-top button,
+html.wails-desktop .wails-mobile-top input {
+  --wails-draggable: no-drag;
+}
+
+html.wails-desktop .wails-titlebar,
+html.wails-desktop .wails-sidebar,
+html.wails-desktop .wails-mobile-top {
+  --wails-draggable: drag;
+  background-color: var(--wails-chrome-bg) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.wails-desktop .wails-titlebar {
+  height: auto;
+  min-height: calc(56px + var(--wails-traffic-inset));
+  padding-top: var(--wails-traffic-inset);
+  box-sizing: border-box;
+}
+
+html.wails-desktop .wails-sidebar {
+  padding-top: calc(1rem + var(--wails-traffic-inset));
+}
+
+html.wails-desktop .wails-mobile-top {
+  padding-top: var(--wails-traffic-inset);
 }
 
 /* Scrollbar Styling */
@@ -381,7 +538,30 @@ body {
   }
 }
 
+.settings-auth-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
 @media (max-width: 640px) {
+  .settings-auth-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .settings-auth-controls > input {
+    grid-column: 1 / -1;
+  }
+
+  .settings-auth-controls > button {
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .settings-two-col {
+    grid-template-columns: 1fr !important;
+  }
+
   .header {
     flex-direction: column;
     align-items: flex-start;
@@ -592,4 +772,3 @@ html.stockgod-light .divide-line {
 html.stockgod-light aside {
   background-color: rgba(255, 255, 255, 0.92) !important;
 }
-

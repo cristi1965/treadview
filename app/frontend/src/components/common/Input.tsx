@@ -8,6 +8,8 @@ interface InputProps {
   disabled?: boolean;
   className?: string;
   icon?: React.ReactNode;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -17,7 +19,9 @@ export const Input: React.FC<InputProps> = ({
   type = 'text',
   disabled = false,
   className = '',
-  icon
+  icon,
+  onFocus,
+  onBlur,
 }) => {
   return (
     <div className={`relative ${className}`}>
@@ -32,6 +36,8 @@ export const Input: React.FC<InputProps> = ({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
+        onFocus={onFocus}
+        onBlur={onBlur}
         className={`
           w-full rounded-lg border border-line bg-surface 
           py-1.5 text-sm text-ink placeholder-faint

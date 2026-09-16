@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"database/sql"
 	_ "embed"
 	"encoding/json"
 	"encoding/xml"
@@ -18,6 +19,8 @@ import (
 	"sync"
 	"time"
 	"trading-agents/internal/models"
+
+	"gorm.io/gorm"
 )
 
 //go:embed superinvestor_ciks.json
@@ -32,6 +35,7 @@ type EDGARSubmissions struct {
 		Recent struct {
 			AccessionNumber []string `json:"accessionNumber"`
 			FilingDate      []string `json:"filingDate"`
+			ReportDate      []string `json:"reportDate"`
 			Form            []string `json:"form"`
 		} `json:"recent"`
 	} `json:"filings"`
@@ -110,20 +114,20 @@ func edgarRequest(url string) (*http.Response, error) {
 
 // ===================== SEC EDGAR Sync Logic =====================
 
-func fetchLatest13FAccession(cik string) (accession, filingDate, dataFileURL string, err error) {
+func fetchLatest13FAccession(cik string) (accession, filingDate, reportPeriod, dataFileURL string, err error) {
 	url := fmt.Sprintf("https://data.sec.gov/submissions/CIK%s.json", cik)
 	resp, err := edgarRequest(url)
 	if err != nil {
-		return "", "", "", fmt.Errorf("EDGAR submissions fetch error: %w", err)
+		return "", "", "", "", fmt.Errorf("EDGAR submissions fetch error: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", "", fmt.Errorf("EDGAR submissions HTTP %d for CIK %s", resp.StatusCode, cik)
+		return "", "", "", "", fmt.Errorf("EDGAR submissions HTTP %d for CIK %s", resp.StatusCode, cik)
 	}
 
 	var subs EDGARSubmissions
 	if err := json.NewDecoder(resp.Body).Decode(&subs); err != nil {
-		return "", "", "", fmt.Errorf("EDGAR submissions decode error: %w", err)
+		return "", "", "", "", fmt.Errorf("EDGAR submissions decode error: %w", err)
 	}
 
 	r := subs.Filings.Recent
@@ -131,7 +135,12 @@ func fetchLatest13FAccession(cik string) (accession, filingDate, dataFileURL str
 		if form != "13F-HR" {
 			continue
 		}
-		accNum := r.AccessionNumber[i]
+		accNum := stringAt(r.AccessionNumber, i)
+		if accNum == "" {
+			continue
+		}
+		filingDate := stringAt(r.FilingDate, i)
+		reportPeriod := stringAt(r.ReportDate, i)
 		accNoDash := strings.ReplaceAll(accNum, "-", "")
 		cikInt := strings.TrimLeft(cik, "0")
 		indexURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/%s-index.htm",
@@ -139,11 +148,18 @@ func fetchLatest13FAccession(cik string) (accession, filingDate, dataFileURL str
 
 		xmlFile, err := findInfoTableXML(indexURL, cikInt, accNoDash)
 		if err != nil {
-			return accNum, r.FilingDate[i], "", err
+			return accNum, filingDate, reportPeriod, "", err
 		}
-		return accNum, r.FilingDate[i], xmlFile, nil
+		return accNum, filingDate, reportPeriod, xmlFile, nil
 	}
-	return "", "", "", fmt.Errorf("no 13F-HR found for CIK %s", cik)
+	return "", "", "", "", fmt.Errorf("no 13F-HR found for CIK %s", cik)
+}
+
+func stringAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return strings.TrimSpace(values[index])
 }
 
 func findInfoTableXML(indexURL, cikInt, accNoDash string) (string, error) {
@@ -254,12 +270,36 @@ func RunEDGARSync() {
 	WhalesSyncing = true
 	WhalesSyncStatus = "Syncing with SEC EDGAR (13F)..."
 	SyncMutex.Unlock()
+	runClaimedEDGARSync()
+}
+
+// StartEDGARSync atomically claims the singleton job before returning.
+func StartEDGARSync() bool {
+	SyncMutex.Lock()
+	if WhalesSyncing {
+		SyncMutex.Unlock()
+		return false
+	}
+	WhalesSyncing = true
+	WhalesSyncStatus = "Syncing with SEC EDGAR (13F)..."
+	SyncMutex.Unlock()
+	go runClaimedEDGARSync()
+	return true
+}
+
+func runClaimedEDGARSync() {
+	successCount := 0
 
 	defer func() {
 		SyncMutex.Lock()
 		WhalesSyncing = false
-		WhalesLastSync = time.Now().Format("2006-01-02 15:04:05")
-		WhalesSyncStatus = "Idle"
+		if successCount > 0 {
+			WhalesLastSync = time.Now().Format("2006-01-02 15:04:05")
+			WhalesLastSuccessCount = successCount
+			WhalesSyncStatus = fmt.Sprintf("SEC EDGAR complete: %d managers", successCount)
+		} else {
+			WhalesSyncStatus = "SEC EDGAR failed: no complete filing committed"
+		}
 		SyncMutex.Unlock()
 	}()
 
@@ -269,8 +309,6 @@ func RunEDGARSync() {
 	}
 
 	cusipCache := loadCusipCache()
-	successCount := 0
-
 	// Stable order for logs / rate limits. Optional filter: EDGAR_ONLY_SLUGS=warren-buffett,bill-ackman
 	only := map[string]bool{}
 	if raw := strings.TrimSpace(os.Getenv("EDGAR_ONLY_SLUGS")); raw != "" {
@@ -303,10 +341,14 @@ func RunEDGARSync() {
 		WhalesSyncStatus = fmt.Sprintf("EDGAR 13F: %s", slug)
 		SyncMutex.Unlock()
 
-		accession, filingDate, xmlURL, err := fetchLatest13FAccession(entry.CIK)
+		accession, filingDate, reportPeriod, xmlURL, err := fetchLatest13FAccession(entry.CIK)
 		if err != nil {
 			log.Printf("[EDGAR] Error fetching accession for %s: %v", slug, err)
 			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if strings.TrimSpace(reportPeriod) == "" {
+			log.Printf("[EDGAR] Missing report period for %s accession %s; skipping unsafe sync", slug, accession)
 			continue
 		}
 		if xmlURL == "" {
@@ -337,19 +379,30 @@ func RunEDGARSync() {
 			totalUSD += v
 		}
 
-		guru := upsertGuruFromEDGAR(slug, entry, holdings, usdValues, totalUSD)
-
-		// Previous holdings for QoQ change labels
+		// Compare with the latest earlier filing while retaining every report period.
+		var existingGuru models.Guru
+		if err := DB.Where("slug = ?", slug).First(&existingGuru).Error; err != nil {
+			_ = DB.Where("fund_name = ? OR name LIKE ?", entry.FundName, "%"+entry.DBName+"%").First(&existingGuru).Error
+		}
 		prev := map[string]int64{}
 		var oldRows []models.Holding
-		DB.Where("guru_id = ?", guru.ID).Find(&oldRows)
+		var previousPeriod sql.NullString
+		if existingGuru.ID != 0 {
+			_ = DB.Model(&models.Holding{}).
+				Where("guru_id = ? AND report_period != '' AND report_period < ?", existingGuru.ID, reportPeriod).
+				Select("MAX(report_period)").Scan(&previousPeriod).Error
+			if previousPeriod.Valid && strings.TrimSpace(previousPeriod.String) != "" {
+				DB.Where("guru_id = ? AND report_period = ?", existingGuru.ID, previousPeriod.String).Find(&oldRows)
+			} else {
+				// Rows created before report-period support are used once as the legacy baseline.
+				DB.Where("guru_id = ? AND report_period = ''", existingGuru.ID).Find(&oldRows)
+			}
+		}
 		for _, row := range oldRows {
 			sym := strings.ToUpper(strings.TrimSpace(row.StockSymbol))
 			shares, _ := strconv.ParseInt(strings.ReplaceAll(row.Shares, ",", ""), 10, 64)
 			prev[sym] = shares
 		}
-
-		DB.Where("guru_id = ?", guru.ID).Delete(&models.Holding{})
 
 		// Aggregate duplicate tickers (multi-CUSIP / share-class lines).
 		type aggRow struct {
@@ -379,6 +432,7 @@ func RunEDGARSync() {
 				order = append(order, sym)
 			}
 		}
+		periodHoldings := make([]models.Holding, 0, len(order))
 		for _, sym := range order {
 			a := aggs[sym]
 			weight := 0.0
@@ -386,15 +440,20 @@ func RunEDGARSync() {
 				weight = a.usd / totalUSD * 100.0
 			}
 			prevShares, existed := prev[sym]
-			DB.Create(&models.Holding{
-				GuruID:      guru.ID,
-				StockSymbol: a.ticker,
-				StockName:   a.name,
-				Value:       formatUSD(a.usd),
-				Shares:      fmt.Sprintf("%d", a.shares),
-				Change:      changeLabel(prevShares, a.shares, existed),
-				Weight:      weight,
+			periodHoldings = append(periodHoldings, models.Holding{
+				ReportPeriod: reportPeriod,
+				StockSymbol:  a.ticker,
+				StockName:    a.name,
+				Value:        formatUSD(a.usd),
+				Shares:       fmt.Sprintf("%d", a.shares),
+				Change:       changeLabel(prevShares, a.shares, existed),
+				Weight:       weight,
 			})
+		}
+		_, err = saveEDGARDisclosure(DB, slug, entry, holdings, usdValues, totalUSD, accession, filingDate, reportPeriod, xmlURL, periodHoldings)
+		if err != nil {
+			log.Printf("[EDGAR] Failed committing %s disclosure for %s: %v", slug, reportPeriod, err)
+			continue
 		}
 
 		successCount++
@@ -408,7 +467,36 @@ func RunEDGARSync() {
 	log.Printf("[EDGAR] Sync complete: %d/%d gurus updated", successCount, len(slugs))
 }
 
-func upsertGuruFromEDGAR(slug string, entry SuperinvestorEntry, holdings []InfoTable, usdValues []float64, totalUSD float64) models.Guru {
+func saveEDGARDisclosure(db *gorm.DB, slug string, entry SuperinvestorEntry, holdings []InfoTable, usdValues []float64, totalUSD float64, accession, filingDate, reportPeriod, sourceURL string, periodHoldings []models.Holding) (models.Guru, error) {
+	var committed models.Guru
+	err := db.Transaction(func(tx *gorm.DB) error {
+		guru, err := upsertGuruFromEDGARDB(tx, slug, entry, holdings, usdValues, totalUSD, accession, filingDate, reportPeriod, sourceURL)
+		if err != nil {
+			return err
+		}
+		for i := range periodHoldings {
+			periodHoldings[i].GuruID = guru.ID
+			periodHoldings[i].ReportPeriod = reportPeriod
+		}
+		if err := tx.Where("guru_id = ? AND report_period = ?", guru.ID, reportPeriod).Delete(&models.Holding{}).Error; err != nil {
+			return err
+		}
+		if len(periodHoldings) == 0 {
+			return fmt.Errorf("refusing to commit empty SEC filing %s", accession)
+		}
+		if err := tx.Create(&periodHoldings).Error; err != nil {
+			return err
+		}
+		if err := upsertGuruFilingDB(tx, guru); err != nil {
+			return err
+		}
+		committed = guru
+		return nil
+	})
+	return committed, err
+}
+
+func upsertGuruFromEDGARDB(db *gorm.DB, slug string, entry SuperinvestorEntry, holdings []InfoTable, usdValues []float64, totalUSD float64, accession, filingDate, reportPeriod, sourceURL string) (models.Guru, error) {
 	var topIdx int
 	for i := range holdings {
 		if usdValues[i] > usdValues[topIdx] {
@@ -422,10 +510,10 @@ func upsertGuruFromEDGAR(slug string, entry SuperinvestorEntry, holdings []InfoT
 	}
 
 	var guru models.Guru
-	err := DB.Where("slug = ?", slug).First(&guru).Error
+	err := db.Where("slug = ?", slug).First(&guru).Error
 	if err != nil {
 		// Fallback: fund name / Chinese name
-		_ = DB.Where("fund_name = ? OR name LIKE ?", entry.FundName, "%"+entry.DBName+"%").First(&guru).Error
+		_ = db.Where("fund_name = ? OR name LIKE ?", entry.FundName, "%"+entry.DBName+"%").First(&guru).Error
 	}
 
 	nameEn := entry.NameEn
@@ -458,9 +546,22 @@ func upsertGuruFromEDGAR(slug string, entry SuperinvestorEntry, holdings []InfoT
 			TopStockWeight: topWeight,
 			AvatarCode:     strings.ToUpper(avatar),
 			Type:           "superinvestor",
+			ReportPeriod:   reportPeriod,
+			FilingDate:     filingDate,
+			Accession:      accession,
+			Source:         "sec-edgar-13f",
+			SourceAsOf:     reportPeriod,
+			SourceURL:      sourceURL,
+			SyncedAt:       time.Now().UTC(),
 		}
-		DB.Create(&guru)
-		return guru
+		if err := db.Create(&guru).Error; err != nil {
+			return models.Guru{}, err
+		}
+		return guru, nil
+	}
+	// Persist the pre-update filing so an upgrade does not lose the last known period.
+	if err := upsertGuruFilingDB(db, guru); err != nil {
+		return models.Guru{}, err
 	}
 
 	guru.Slug = slug
@@ -477,8 +578,49 @@ func upsertGuruFromEDGAR(slug string, entry SuperinvestorEntry, holdings []InfoT
 	if guru.Type == "" {
 		guru.Type = "superinvestor"
 	}
-	DB.Save(&guru)
-	return guru
+	guru.ReportPeriod = reportPeriod
+	guru.FilingDate = filingDate
+	guru.Accession = accession
+	guru.Source = "sec-edgar-13f"
+	guru.SourceAsOf = reportPeriod
+	guru.SourceURL = sourceURL
+	guru.SyncedAt = time.Now().UTC()
+	if err := db.Save(&guru).Error; err != nil {
+		return models.Guru{}, err
+	}
+	return guru, nil
+}
+
+func upsertGuruFilingDB(db *gorm.DB, guru models.Guru) error {
+	if guru.ID == 0 || strings.TrimSpace(guru.ReportPeriod) == "" {
+		return nil
+	}
+	filing := models.GuruFiling{
+		GuruID: guru.ID, ReportPeriod: guru.ReportPeriod, FilingDate: guru.FilingDate,
+		Accession: guru.Accession, Source: guru.Source, SourceAsOf: guru.SourceAsOf,
+		SourceURL: guru.SourceURL, SyncedAt: guru.SyncedAt,
+	}
+	return db.Where("guru_id = ? AND report_period = ?", guru.ID, guru.ReportPeriod).
+		Assign(filing).FirstOrCreate(&filing).Error
+}
+
+func backfillWhaleDisclosureHistory(db *gorm.DB) {
+	var gurus []models.Guru
+	if err := db.Where("report_period != ''").Find(&gurus).Error; err != nil {
+		log.Printf("Whales disclosure history backfill skipped: %v", err)
+		return
+	}
+	for _, guru := range gurus {
+		if err := db.Model(&models.Holding{}).
+			Where("guru_id = ? AND report_period = ''", guru.ID).
+			Update("report_period", guru.ReportPeriod).Error; err != nil {
+			log.Printf("Whales holding-period backfill failed for guru %d: %v", guru.ID, err)
+			continue
+		}
+		if err := upsertGuruFilingDB(db, guru); err != nil {
+			log.Printf("Whales filing-history backfill failed for guru %d: %v", guru.ID, err)
+		}
+	}
 }
 
 // ===================== Helpers =====================

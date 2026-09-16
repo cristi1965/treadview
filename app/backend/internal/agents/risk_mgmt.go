@@ -19,19 +19,20 @@ func AggressiveAnalyst(ctx context.Context, client llm.LLMClient, state *AgentSt
 ## Previous Discussion
 %s
 
-Argue for a MORE aggressive position:
-- Why the risk/reward is favorable
-- Why a larger position size is appropriate
-- Why the stop-loss can be wider or unnecessary
-- Historical precedents where bold positions paid off
+Stress-test the upside scenario without proposing a position:
+- Which captured evidence supports the upside case
+- Which source-backed conditions would strengthen it
+- Which material facts remain unknown
 
-Be specific and reference the analyst reports.`,
+Be specific and reference the analyst reports.
+%s`,
 		state.TraderInvestmentPlan,
 		state.RiskDebateState.History,
+		sourceDisciplineInstruction(),
 	)
 
 	response, err := client.Generate(ctx,
-		"You are an aggressive risk analyst who favors bold positions with high conviction trades.",
+		"You stress-test the upside case but never invent facts or issue a trade.",
 		prompt, false)
 	if err != nil {
 		emitError(onEvent, "Aggressive Analyst", err)
@@ -54,15 +55,16 @@ func ConservativeAnalyst(ctx context.Context, client llm.LLMClient, state *Agent
 ## Previous Discussion
 %s
 
-Argue for a MORE conservative approach:
-- Key downside risks that haven't been adequately addressed
-- Why position sizing should be smaller
-- Why tighter stop-losses are needed
-- Hedging strategies to consider
+Stress-test the downside scenario without proposing a position:
+- Key source-backed downside risks
+- Which captured evidence would invalidate the downside case
+- Which material facts remain unknown
 
-Be specific and reference the analyst reports.`,
+Be specific and reference the analyst reports.
+%s`,
 		state.TraderInvestmentPlan,
 		state.RiskDebateState.History,
+		sourceDisciplineInstruction(),
 	)
 
 	response, err := client.Generate(ctx,
@@ -94,18 +96,20 @@ func NeutralAnalyst(ctx context.Context, client llm.LLMClient, state *AgentState
 
 Provide a balanced synthesis:
 - Where each side has valid points
-- A practical middle-ground recommendation
-- Specific risk parameters (position size, stop-loss, take-profit)
-- How to scale in/out based on market conditions
+- A conditional synthesis for further observation
+- The evidence gaps that prevent execution
+- Conditions that would justify refreshing the research
 
-Be specific and evidence-based.`,
+Be specific and evidence-based.
+%s`,
 		state.TraderInvestmentPlan,
 		state.RiskDebateState.AggressiveHistory,
 		state.RiskDebateState.ConservativeHistory,
+		sourceDisciplineInstruction(),
 	)
 
 	response, err := client.Generate(ctx,
-		"You are a neutral risk analyst who synthesizes aggressive and conservative views into practical recommendations.",
+		"You are a neutral, source-bound risk analyst. Synthesize evidence gaps and monitoring conditions without investment actions.",
 		prompt, false)
 	if err != nil {
 		emitError(onEvent, "Neutral Analyst", err)
@@ -145,13 +149,14 @@ func PortfolioManager(ctx context.Context, client llm.LLMClient, state *AgentSta
 - Neutral View: %s
 %s
 
-## Your Final Decision
-Produce the FINAL portfolio decision with:
-1. **Rating**: Exactly one of Buy / Overweight / Hold / Underweight / Sell
-2. **Executive Summary**: Concise action plan (entry, sizing, risk levels, time horizon) — 2-4 sentences
-3. **Investment Thesis**: Detailed reasoning anchored in the evidence above
-4. **Price Target**: Optional target price
-5. **Time Horizon**: Optional holding period recommendation
+## Final Research Output
+There is no verified position input. Produce only:
+1. **Status**: OBSERVE
+2. **Evidence Summary**: What the captured sources establish
+3. **Unknowns**: Missing facts that prevent an investment action
+4. **Monitoring Conditions**: Conditions for refreshing the research
+5. **对照 X / 股票玩家**: Public-player observations, explicitly not the user's holdings
+%s
 %s`,
 		state.CompanyOfInterest,
 		truncate(state.MarketReport, 1000),
@@ -164,11 +169,12 @@ Produce the FINAL portfolio decision with:
 		truncate(state.RiskDebateState.ConservativeHistory, 1000),
 		truncate(state.RiskDebateState.NeutralHistory, 1000),
 		pastContext,
+		positionGuardrails(state),
 		languageInstruction(state),
 	)
 
 	response, err := client.Generate(ctx,
-		"You are a senior Portfolio Manager making the final investment decision. Be authoritative and decisive.",
+		"You are a source-bound research reviewer. Output OBSERVE and conditional monitoring only; never issue a trade, stop, option, target, or position instruction.",
 		prompt, true) // use deep thinking model
 	if err != nil {
 		emitError(onEvent, "Portfolio Manager", err)

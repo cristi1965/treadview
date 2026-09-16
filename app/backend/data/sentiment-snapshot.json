@@ -1,0 +1,159 @@
+{
+  "ts": "2026-08-13T09:30:00+08:00",
+  "us": {
+    "label": "美股情绪面板",
+    "gauges": [
+      {
+        "id": "vix",
+        "name": "VIX 恐慌指数",
+        "value": 16.88,
+        "pct": -1.23,
+        "unit": "",
+        "zone": "neutral",
+        "tip": "<20 低波 · 20-30 警惕 · >30 恐慌",
+        "thresholds": [20, 30]
+      },
+      {
+        "id": "tnx",
+        "name": "美债 10Y 收益率",
+        "value": 4.663,
+        "pct": 0.89,
+        "unit": "%",
+        "zone": "elevated",
+        "tip": "长端利率 · >4.5% 压制成长股估值"
+      },
+      {
+        "id": "t2y",
+        "name": "美债 2Y 收益率",
+        "value": 4.35,
+        "pct": 0.42,
+        "unit": "%",
+        "zone": "neutral",
+        "tip": "短端利率 · 反映降息预期"
+      },
+      {
+        "id": "spread",
+        "name": "10Y-2Y 利差",
+        "value": 0.31,
+        "pct": 0,
+        "unit": "%",
+        "zone": "normal",
+        "tip": "<0 倒挂=衰退信号 · 陡化=复苏"
+      },
+      {
+        "id": "dxy",
+        "name": "美元指数 DXY",
+        "value": 100.17,
+        "pct": 0.16,
+        "unit": "",
+        "zone": "neutral",
+        "tip": ">105 强美元压新兴市场 · <100 弱美元利多风险资产"
+      },
+      {
+        "id": "gold",
+        "name": "黄金",
+        "value": 4129.0,
+        "pct": 0.70,
+        "unit": "$/oz",
+        "zone": "elevated",
+        "tip": "避险需求 · 黄金上行=市场避险情绪升温"
+      },
+      {
+        "id": "pcr",
+        "name": "Put/Call Ratio (CBOE)",
+        "value": 0.82,
+        "pct": 0,
+        "unit": "",
+        "zone": "neutral",
+        "tip": ">1.0 恐慌 · <0.7 过度乐观 · 0.8-1.0 中性"
+      },
+      {
+        "id": "fgi",
+        "name": "CNN 恐贪指数",
+        "value": 62,
+        "pct": 0,
+        "unit": "/100",
+        "zone": "greed",
+        "tip": "0-25 极度恐惧 · 25-45 恐惧 · 45-55 中性 · 55-75 贪婪 · 75+ 极度贪婪"
+      }
+    ]
+  },
+  "cn": {
+    "label": "A股情绪面板",
+    "gauges": [
+      {
+        "id": "margin",
+        "name": "融资余额",
+        "value": 18920,
+        "pct": 0.35,
+        "unit": "亿",
+        "zone": "elevated",
+        "tip": "融资余额 · >1.8万亿=过热信号 · 持续增加=做多情绪"
+      },
+      {
+        "id": "margin_buy",
+        "name": "融资买入额(日)",
+        "value": 1245,
+        "pct": 8.2,
+        "unit": "亿",
+        "zone": "hot",
+        "tip": "单日融资买入 · >1000亿=活跃 · >1500亿=狂热"
+      },
+      {
+        "id": "north",
+        "name": "北向资金(日)",
+        "value": 86.3,
+        "pct": 0,
+        "unit": "亿",
+        "zone": "positive",
+        "tip": "外资净流入 · 正=流入 · 负=流出 · |>100亿|=大额信号"
+      },
+      {
+        "id": "turnover",
+        "name": "两市成交额",
+        "value": 12850,
+        "pct": 5.6,
+        "unit": "亿",
+        "zone": "elevated",
+        "tip": ">1万亿=活跃 · >1.5万亿=过热 · <8000亿=低迷"
+      },
+      {
+        "id": "advance",
+        "name": "涨跌家数比",
+        "value": 2.3,
+        "pct": 0,
+        "unit": "",
+        "zone": "positive",
+        "tip": ">2 普涨 · 1-2 分化 · <1 普跌 · <0.5 崩溃"
+      },
+      {
+        "id": "limit_up",
+        "name": "涨停 / 跌停",
+        "value": 58,
+        "pct": 0,
+        "unit": "",
+        "zone": "hot",
+        "tip": "涨停家数 · >80=极热 · 30-60=活跃 · <15=冰点",
+        "extra": "12"
+      },
+      {
+        "id": "cny",
+        "name": "人民币汇率 USD/CNY",
+        "value": 7.12,
+        "pct": -0.08,
+        "unit": "",
+        "zone": "neutral",
+        "tip": "<7.0 人民币偏强 · >7.3 贬值压力 · 影响北向资金意愿"
+      },
+      {
+        "id": "shibor",
+        "name": "SHIBOR 隔夜",
+        "value": 1.65,
+        "pct": -0.02,
+        "unit": "%",
+        "zone": "loose",
+        "tip": "银行间资金面 · <2% 宽松 · >3% 偏紧"
+      }
+    ]
+  }
+}

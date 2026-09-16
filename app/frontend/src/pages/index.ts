@@ -8,6 +8,7 @@ export { Whales } from './Whales';
 
 // Re-export existing pages
 export { Dashboard } from './Dashboard';
+export { ResearchLab } from './ResearchLab';
 export { History } from './History';
 export { Settings } from './Settings';
 export { WhalesSimple } from './WhalesSimple';
@@ -17,3 +18,7 @@ export { Notes } from './Notes';
 export { Macro } from './Macro';
 export { StockGodMacroGate } from './StockGodMacroGate';
 export { StockDetail } from './StockDetail';
+export { MultiChart } from './MultiChart';
+export { TacticalCommand } from './TacticalCommand';
+export { TradingCopilot } from './TradingCopilot';
+export { GPUPrices } from './GPUPrices';

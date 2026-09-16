@@ -83,7 +83,14 @@ def normalize_amount(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def parse_ptr_text(text: str, politician: str, district: str, filing_date: str) -> list[dict]:
+def parse_ptr_text(
+    text: str,
+    politician: str,
+    district: str,
+    filing_date: str,
+    source_url: str,
+    filing_id: str,
+) -> list[dict]:
     trades: list[dict] = []
     # Collapse whitespace for more stable matching
     flat = re.sub(r"[ \t]+", " ", text)
@@ -129,6 +136,9 @@ def parse_ptr_text(text: str, politician: str, district: str, filing_date: str) 
                 "amount": amount,
                 "date": trade_date,
                 "source": "house-ptr",
+                "filingDate": filing_date or "unknown",
+                "sourceURL": source_url,
+                "filingId": filing_id,
             }
         )
 
@@ -194,7 +204,14 @@ def main() -> int:
         try:
             pdf = http_get(url)
             text = extract_pdf_text(pdf)
-            parsed = parse_ptr_text(text, politician, district, r.get("filing_date") or "")
+            parsed = parse_ptr_text(
+                text,
+                politician,
+                district,
+                r.get("filing_date") or "",
+                url,
+                doc,
+            )
             trades.extend(parsed)
             print(f"[house-ptr] {i+1}/{len(selected)} {politician} -> {len(parsed)} trades", file=sys.stderr)
         except Exception as e:

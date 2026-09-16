@@ -116,6 +116,9 @@ def fetch_quiver_public() -> tuple[list[dict], str]:
                 "amount": str(r[4] or "").strip(),
                 "date": normalize_date(str(r[9] or r[8] or "")),
                 "source": "quiver-public",
+                "filingDate": "unknown",
+                "sourceURL": "https://www.quiverquant.com/congresstrading/",
+                "filingId": "unknown",
                 "assetName": str(r[1] or ""),
             }
         )
@@ -151,6 +154,9 @@ def fetch_quiver_api() -> tuple[list[dict], str]:
                 "amount": str(r.get("Range") or r.get("Amount") or "").strip(),
                 "date": normalize_date(str(r.get("TransactionDate") or r.get("Date") or "")),
                 "source": "quiver-api",
+                "filingDate": normalize_date(str(r.get("ReportDate") or r.get("filingDate") or "")) or "unknown",
+                "sourceURL": "unknown",
+                "filingId": str(r.get("ReportID") or r.get("transactionId") or "unknown").strip(),
             }
         )
     return trades, "api.quiverquant.com (QUIVER_API_KEY)"
@@ -189,6 +195,9 @@ def fetch_fmp_api() -> tuple[list[dict], str]:
                     "amount": str(r.get("amount") or "").strip(),
                     "date": normalize_date(str(r.get("transactionDate") or r.get("date") or "")),
                     "source": "fmp-api",
+                    "filingDate": normalize_date(str(r.get("disclosureDate") or r.get("filingDate") or "")) or "unknown",
+                    "sourceURL": str(r.get("link") or r.get("url") or "unknown").strip(),
+                    "filingId": str(r.get("id") or "unknown").strip(),
                 }
             )
     if not trades:
@@ -216,6 +225,9 @@ def fetch_github_senate_historical() -> tuple[list[dict], str]:
                 "amount": str(r.get("amount") or "").strip(),
                 "date": normalize_date(str(r.get("transaction_date") or "")),
                 "source": "github-senate-stock-watcher",
+                "filingDate": normalize_date(str(r.get("disclosure_date") or "")) or "unknown",
+                "sourceURL": url,
+                "filingId": str(r.get("ptr_link") or r.get("id") or "unknown").strip(),
             }
         )
     # Keep only latest ~2y-ish of historical if huge; dataset ends ~2020

@@ -21,6 +21,22 @@ export default {
         up: '#2ebd85',
         down: '#f6465d',
         
+        // Apple dark-mode system palette (calendar + flash surfaces stay pure dark)
+        'ios-bg': '#000000',
+        'ios-card': '#1C1C1E',
+        'ios-card-2': '#2C2C2E',
+        'ios-fill': 'rgba(118,118,128,0.24)',
+        'ios-fill-2': '#636366',
+        'ios-hairline': 'rgba(255,255,255,0.08)',
+        'ios-sep': 'rgba(84,84,88,0.65)',
+        'ios-label': '#FFFFFF',
+        'ios-label-2': 'rgba(235,235,245,0.60)',
+        'ios-label-3': 'rgba(235,235,245,0.30)',
+        'ios-green': '#30D158',
+        'ios-red': '#FF453A',
+        'ios-orange': '#FF9F0A',
+        'ios-blue': '#0A84FF',
+
         // Original Tailwind-compatible mapping
         background: '#08090b',
         foreground: '#ecedf0',
@@ -34,8 +50,13 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["-apple-system", "\"SF Pro Text\"", "\"PingFang SC\"", "system-ui", "sans-serif"],
-        mono: ["\"Spline Sans Mono\"", "\"SF Mono\"", "\"JetBrains Mono\"", "Menlo", "monospace"],
+        sans: ["-apple-system", "BlinkMacSystemFont", "\"SF Pro Text\"", "\"PingFang SC\"", "system-ui", "sans-serif"],
+        mono: ["\"SF Mono\"", "\"Spline Sans Mono\"", "\"JetBrains Mono\"", "Menlo", "monospace"],
+      },
+      borderRadius: {
+        ios: '14px',
+        'ios-lg': '16px',
+        'ios-sm': '8px',
       },
     },
   },

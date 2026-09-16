@@ -184,7 +184,7 @@ func ScoreWithLLM(ctx context.Context, client llm.LLMClient, panel *PanelFile, u
 
 	batches := chunkStocks(pending, batchSize)
 	type job struct {
-		idx int
+		idx  int
 		rows []UsStockRow
 	}
 	jobs := make(chan job, len(batches))
@@ -331,6 +331,8 @@ func LoadPanelFile(paths ...string) (*PanelFile, string, error) {
 		if f.Stocks == nil {
 			continue
 		}
+		f.EnsureDeterministicScalingDisclosure()
+		f.EnsureValidationStatus()
 		return &f, p, nil
 	}
 	return nil, "", fmt.Errorf("panel not found")
@@ -377,8 +379,9 @@ func max(a, b int) int {
 	return b
 }
 
-// CalibrateHeuristicTowardOriginal lowers/spreads heuristic scores toward original site stats.
-func CalibrateHeuristicTowardOriginal(sc []int) []int {
+// ScaleHeuristicDeterministically applies a fixed transform. It is not fitted
+// or validated against historical forward returns.
+func ScaleHeuristicDeterministically(sc []int) []int {
 	// original means approx: 36.5, 37.7, 32.8, 45.8, 41.2
 	targets := []float64{36.5, 37.7, 32.8, 45.8, 41.2}
 	// heuristic tends ~55-65; pull toward target with soft affine

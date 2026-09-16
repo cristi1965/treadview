@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Stock } from '../../types/stocks';
 import { Input } from '../common';
 import { useDebounce } from '../../hooks/useDebounce';
 import { get } from '../../utils/api';
 import { loadUsMarketStocks } from '../../utils/stockgodData';
+import { createLatestRequestGate } from '../../utils/latestRequest';
+import { RefreshCw } from 'lucide-react';
 
 interface StockSelectorProps {
   value: Stock | null;
@@ -24,19 +26,27 @@ export const StockSelector: React.FC<StockSelectorProps> = ({
   const [results, setResults] = useState<Stock[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [retryVersion, setRetryVersion] = useState(0);
+  const searchGate = useRef(createLatestRequestGate());
   
   const debouncedQuery = useDebounce(query, 300);
 
   React.useEffect(() => {
     if (debouncedQuery && debouncedQuery.length >= 2) {
-      searchStocks(debouncedQuery);
+      void searchStocks(debouncedQuery);
     } else {
+      searchGate.current.invalidate();
       setResults([]);
+      setSearchError('');
     }
-  }, [debouncedQuery]);
+    return () => searchGate.current.invalidate();
+  }, [debouncedQuery, retryVersion]);
 
   const searchStocks = async (q: string) => {
+    const request = searchGate.current.begin();
     setIsSearching(true);
+    setSearchError('');
     try {
       const all = await loadUsMarketStocks().catch(() => null);
       if (all) {
@@ -45,19 +55,24 @@ export const StockSelector: React.FC<StockSelectorProps> = ({
           .filter((s) => s.symbol.toLowerCase().includes(lower) || s.name.toLowerCase().includes(lower))
           .slice(0, 12);
         if (local.length > 0) {
+          if (!searchGate.current.isCurrent(request)) return;
           setResults(local);
           setShowResults(true);
           return;
         }
       }
       const response = await get<SearchResponse>(`/api/stocks/search?q=${encodeURIComponent(q)}`);
+      if (!searchGate.current.isCurrent(request)) return;
       setResults(response.results || []);
       setShowResults(true);
     } catch (error) {
+      if (!searchGate.current.isCurrent(request)) return;
       console.error('Search failed:', error);
       setResults([]);
+      setShowResults(false);
+      setSearchError(error instanceof Error ? error.message : '股票搜索暂不可用');
     } finally {
-      setIsSearching(false);
+      if (searchGate.current.isCurrent(request)) setIsSearching(false);
     }
   };
 
@@ -105,7 +120,7 @@ export const StockSelector: React.FC<StockSelectorProps> = ({
       <Input
         type="text"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(v) => setQuery(v)}
         placeholder={placeholder}
         onFocus={() => query && setShowResults(true)}
         onBlur={() => setTimeout(() => setShowResults(false), 200)}
@@ -131,6 +146,14 @@ export const StockSelector: React.FC<StockSelectorProps> = ({
       {isSearching && (
         <div className="absolute right-3 top-3 text-xs text-faint">
           搜索中...
+        </div>
+      )}
+      {!isSearching && searchError && (
+        <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-xs text-down">
+          <span>搜索失败：{searchError}</span>
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setRetryVersion((value) => value + 1)} className="inline-flex items-center gap-1 text-accent hover:text-ink">
+            <RefreshCw className="h-3 w-3" /> 重试
+          </button>
         </div>
       )}
     </div>

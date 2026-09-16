@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stockgod.trading-cockpit</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jingxin/Library/Application Support/TradingAgents/runtime/tradingagents-backend</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Applications/workspace/ai管力/账本/pxx-trading-Agents/app/backend</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PORT</key>
+    <string>8765</string>
+    <key>STOCKGOD_LOCAL_FRONTEND</key>
+    <string>true</string>
+    <key>STOCKGOD_REPLAY</key>
+    <string>false</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/jingxin/Library/Application Support/TradingAgents/runtime/backend.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jingxin/Library/Application Support/TradingAgents/runtime/backend.log</string>
+</dict>
+</plist>

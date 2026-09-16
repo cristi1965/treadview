@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "我不是神 · AI 交易员伴侣 (TradingAgents)",
+  "version": "1.0.0",
+  "description": "在 TradingView、雪球、Yahoo Finance 页面直接获取五神打分、AI 支撑阻力位与此刻买入决策。",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8765/*",
+    "https://*.tradingview.com/*",
+    "https://*.xueqiu.com/*",
+    "https://finance.yahoo.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "我不是神 · AI 研判助手"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.tradingview.com/*",
+        "https://*.xueqiu.com/*",
+        "https://finance.yahoo.com/*"
+      ],
+      "js": ["i18n.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

@@ -1,4 +1,0 @@
-interface:
-  display_name: "StockGod Full Replica"
-  short_description: "Recover and verify StockGod original-site parity."
-  default_prompt: "Use the StockGod full-replica workflow to capture the live site, compare local behavior, and produce a prioritized implementation plan."

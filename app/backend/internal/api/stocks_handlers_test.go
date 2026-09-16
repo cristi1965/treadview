@@ -1,6 +1,26 @@
 package api
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"trading-agents/internal/market"
+)
+
+func TestTrustedQuoteCoverageRequiresProviderAndObservationTime(t *testing.T) {
+	at := time.Date(2026, 9, 9, 7, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	quotes := map[string]market.Quote{
+		"AAPL": {Price: 230, Source: "tradingview", DataTime: at, TimeGranularity: "second"},
+		"MSFT": {Price: 500, Source: "stale-snapshot:us", DataTime: at, TimeGranularity: "second"},
+		"NVDA": {Price: 220, Source: "tradingview"},
+	}
+	if got := trustedQuoteCoverage(quotes); got != 1 {
+		t.Fatalf("coverage=%d want 1", got)
+	}
+}
 
 func TestIsCNMarket(t *testing.T) {
 	cases := map[string]bool{
@@ -10,6 +30,27 @@ func TestIsCNMarket(t *testing.T) {
 		if got := isCNMarket(in); got != want {
 			t.Fatalf("isCNMarket(%q)=%v want %v", in, got, want)
 		}
+	}
+}
+
+func TestNormalizeStocksMarket(t *testing.T) {
+	cases := map[string]string{
+		"":    "us",
+		"us":  "us",
+		"CN":  "cn",
+		" a ": "cn",
+	}
+	for in, want := range cases {
+		got, err := normalizeStocksMarket(in)
+		if err != nil {
+			t.Fatalf("normalizeStocksMarket(%q) unexpected error: %v", in, err)
+		}
+		if got != want {
+			t.Fatalf("normalizeStocksMarket(%q)=%q want %q", in, got, want)
+		}
+	}
+	if _, err := normalizeStocksMarket("hk"); err == nil {
+		t.Fatal("normalizeStocksMarket(\"hk\") expected error")
 	}
 }
 
@@ -38,5 +79,19 @@ func TestParseAMarketStocks(t *testing.T) {
 	}
 	if src != "a-market@1783590554081" {
 		t.Fatalf("src=%s", src)
+	}
+}
+
+func TestSearchStocksRejectsUnsupportedMarket(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	req := httptest.NewRequest(http.MethodGet, "/api/stocks/search?q=nvda&market=hk", nil)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = req
+
+	(&Handler{}).SearchStocks(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want %d", w.Code, http.StatusBadRequest)
 	}
 }

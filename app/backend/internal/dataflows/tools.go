@@ -1,8 +1,13 @@
 package dataflows
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"trading-agents/internal/llm"
@@ -18,6 +23,37 @@ type ToolRegistry struct {
 	fred       *FREDClient
 	ticker     string
 	date       string
+	evidenceMu sync.Mutex
+	evidence   []ToolInvocation
+	cacheMu    sync.RWMutex
+	cache      map[string]toolCacheEntry
+}
+
+type toolCacheEntry struct {
+	output string
+	err    error
+}
+
+// ToolInvocation is the actual, hash-addressed tool input/output metadata for an analysis run.
+type ToolInvocation struct {
+	Name             string            `json:"name"`
+	Inputs           map[string]string `json:"inputs"`
+	DataTime         string            `json:"data_time"`
+	TimeGranularity  string            `json:"time_granularity,omitempty"`
+	ObservationTimes []string          `json:"observation_times,omitempty"`
+	DisclosureTime   string            `json:"disclosure_time,omitempty"`
+	DisclosureTimes  []string          `json:"disclosure_times,omitempty"`
+	Provider         string            `json:"provider,omitempty"`
+	SourceURL        string            `json:"source_url,omitempty"`
+	CompletedAt      string            `json:"completed_at"`
+	Status           string            `json:"status"`
+	ContentHash      string            `json:"content_hash"`
+	PayloadExcerpt   string            `json:"payload_excerpt,omitempty"`
+	PayloadTruncated bool              `json:"payload_truncated,omitempty"`
+	PayloadRef       string            `json:"payload_ref,omitempty"`
+	PayloadSize      int64             `json:"payload_size,omitempty"`
+	MethodVersion    string            `json:"method_version"`
+	RawPayload       string            `json:"-"`
 }
 
 // NewToolRegistry creates a registry bound to a specific ticker and date.
@@ -29,11 +65,18 @@ func NewToolRegistry(ticker, tradeDate, fredAPIKey string) *ToolRegistry {
 		fred:     NewFREDClient(fredAPIKey),
 		ticker:   ticker,
 		date:     tradeDate,
+		cache:    map[string]toolCacheEntry{},
 	}
 }
 
 // Execute runs a named tool with the given arguments.
-func (r *ToolRegistry) Execute(name string, args map[string]any) (string, error) {
+func (r *ToolRegistry) Execute(name string, args map[string]any) (output string, err error) {
+	if entry, ok := r.cachedInvocation(name, args); ok {
+		output, err = entry.output, entry.err
+		r.recordInvocation(name, args, output, err)
+		return output, err
+	}
+	defer func() { r.recordInvocation(name, args, output, err) }()
 	switch name {
 	case "get_stock_data":
 		ticker := r.argStr(args, "ticker", r.ticker)
@@ -65,11 +108,47 @@ func (r *ToolRegistry) Execute(name string, args map[string]any) (string, error)
 
 	case "get_news":
 		ticker := r.argStr(args, "ticker", r.ticker)
+		companyName := USInstrumentName(ticker)
+		provider := "Yahoo Finance RSS"
+		sourceURL := TickerNewsSourceURL(ticker)
 		articles, err := r.news.GetTickerNews(ticker, 20)
+		if err == nil {
+			articles = filterNewsForTradeDate(articles, r.date, researchNewsMaxAge)
+		}
+		if err != nil || len(articles) == 0 {
+			provider = "Google News RSS"
+			articles, sourceURL, err = r.news.GetTickerNewsFromGoogle(ticker, companyName, 100)
+			if err == nil {
+				articles = filterNewsForTradeDate(articles, r.date, researchNewsMaxAge)
+			}
+		}
 		if err != nil {
 			return fmt.Sprintf("News unavailable for %s: %v", ticker, err), nil
 		}
-		return FormatNewsForLLM(articles, fmt.Sprintf("News for %s", ticker)), nil
+		if len(articles) == 0 {
+			return fmt.Sprintf("News unavailable for %s: no dated articles within the requested point-in-time window", ticker), nil
+		}
+		review := ReviewTickerNews(ticker, companyName, articles)
+		if review.IncludedCount == 0 {
+			return fmt.Sprintf("News unavailable for %s: no ticker-relevant dated articles after deterministic review", ticker), nil
+		}
+		return FormatReviewedNewsForEvidence(review, provider, sourceURL), nil
+
+	case "get_historical_evidence":
+		ticker := r.argStr(args, "ticker", r.ticker)
+		evidence, err := FetchNasdaqHistoricalEvidence(r.yfinance.httpClient, ticker, r.date)
+		if err != nil {
+			return fmt.Sprintf("Historical evidence unavailable for %s: %v", ticker, err), nil
+		}
+		return FormatHistoricalEvidence(evidence), nil
+
+	case "get_x_player_takes":
+		ticker := r.argStr(args, "ticker", r.ticker)
+		takes, err := r.news.GetXPlayerTakes(ticker, 16)
+		if err != nil {
+			return fmt.Sprintf("X/player takes unavailable for %s: %v", ticker, err), nil
+		}
+		return FormatPlayerTakesForLLM(ticker, takes), nil
 
 	case "get_global_news":
 		queries := []string{
@@ -109,6 +188,304 @@ func (r *ToolRegistry) Execute(name string, args map[string]any) (string, error)
 	}
 }
 
+// Prime executes a required source once and makes the exact response reusable by later LLM tool calls.
+func (r *ToolRegistry) Prime(name string, args map[string]any) (string, error) {
+	output, err := r.Execute(name, args)
+	if isPreflightTool(name) {
+		r.cacheMu.Lock()
+		r.cache[r.cacheKey(name, args)] = toolCacheEntry{output: output, err: err}
+		r.cacheMu.Unlock()
+	}
+	return output, err
+}
+
+func (r *ToolRegistry) cachedInvocation(name string, args map[string]any) (toolCacheEntry, bool) {
+	if !isPreflightTool(name) {
+		return toolCacheEntry{}, false
+	}
+	r.cacheMu.RLock()
+	defer r.cacheMu.RUnlock()
+	entry, ok := r.cache[r.cacheKey(name, args)]
+	return entry, ok
+}
+
+// PreflightPayload returns the exact cached response captured before model execution.
+func (r *ToolRegistry) PreflightPayload(name string) (string, bool) {
+	entry, ok := r.cachedInvocation(name, map[string]any{"ticker": r.ticker})
+	return entry.output, ok && entry.err == nil
+}
+
+func (r *ToolRegistry) cacheKey(name string, args map[string]any) string {
+	return name + "|" + strings.ToUpper(strings.TrimSpace(r.argStr(args, "ticker", r.ticker)))
+}
+
+func isPreflightTool(name string) bool {
+	return name == "get_stock_data" || name == "get_fundamentals" || name == "get_news" || name == "get_historical_evidence"
+}
+
+// EvidenceSnapshot returns a defensive copy of actual tool invocations in call order.
+func (r *ToolRegistry) EvidenceSnapshot() []ToolInvocation {
+	r.evidenceMu.Lock()
+	defer r.evidenceMu.Unlock()
+	return append([]ToolInvocation{}, r.evidence...)
+}
+
+func (r *ToolRegistry) recordInvocation(name string, args map[string]any, output string, callErr error) {
+	completedAt := time.Now().UTC()
+	inputs := make(map[string]string, len(args)+1)
+	for key, value := range args {
+		inputs[key] = fmt.Sprint(value)
+	}
+	if _, ok := inputs["ticker"]; !ok && r.ticker != "" {
+		inputs["ticker"] = r.ticker
+	}
+	if r.date != "" {
+		inputs["requested_as_of"] = r.date
+	}
+	dataTime := inferToolDataTime(name, output)
+	timeGranularity := inferToolTimeGranularity(name, output)
+	provider, sourceURL, disclosureTime := inferToolProvenance(name, output)
+	observationTimes := inferToolObservationTimes(name, output)
+	disclosureTimes := inferFundamentalDisclosureTimes(name, output)
+	status := toolInvocationStatus(output, callErr)
+	sum := sha256.Sum256([]byte(output))
+	payloadExcerpt, payloadTruncated := reviewablePayloadExcerpt(output)
+	invocation := ToolInvocation{
+		Name: name, Inputs: inputs, DataTime: dataTime, TimeGranularity: timeGranularity, CompletedAt: completedAt.Format(time.RFC3339),
+		Status: status, ContentHash: "sha256:" + hex.EncodeToString(sum[:]), PayloadExcerpt: payloadExcerpt,
+		PayloadTruncated: payloadTruncated, PayloadSize: int64(len(output)), MethodVersion: "tool-registry-v4",
+		Provider: provider, SourceURL: sourceURL, DisclosureTime: disclosureTime, DisclosureTimes: disclosureTimes, ObservationTimes: observationTimes,
+		RawPayload: output,
+	}
+	r.evidenceMu.Lock()
+	r.evidence = append(r.evidence, invocation)
+	r.evidenceMu.Unlock()
+}
+
+func toolInvocationStatus(output string, callErr error) string {
+	if callErr != nil {
+		return "error"
+	}
+	normalized := strings.ToLower(strings.TrimSpace(output))
+	for _, prefix := range []string{
+		"fundamentals unavailable", "news unavailable", "global news unavailable", "historical evidence unavailable",
+		"indicator data unavailable", "verified snapshot unavailable", "quote unavailable",
+		"x/player takes unavailable", "prediction market data: currently unavailable",
+		"tradingview batch failed", "no trading data available", "insufficient data",
+	} {
+		if strings.HasPrefix(normalized, prefix) {
+			return "unavailable"
+		}
+	}
+	return "captured"
+}
+
+func reviewablePayloadExcerpt(output string) (string, bool) {
+	const maxPayloadBytes = 2048
+	if len(output) <= maxPayloadBytes {
+		return output, false
+	}
+	const marker = "\n...[payload truncated; verify with content_hash]...\n"
+	keep := (maxPayloadBytes - len(marker)) / 2
+	return output[:keep] + marker + output[len(output)-keep:], true
+}
+
+var outputISOTimePattern = regexp.MustCompile(`\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))?\b`)
+
+func inferToolDataTime(name, output string) string {
+	if strings.TrimSpace(output) == "" {
+		return "unknown"
+	}
+	if name == "get_news" || name == "get_global_news" {
+		if latest := latestPublishedTime(output); !latest.IsZero() {
+			return latest.UTC().Format(time.RFC3339)
+		}
+	}
+	if name == "get_fundamentals" {
+		if value := metadataValue(output, "As Of"); value != "" {
+			if parsed, ok := parseToolTime(value); ok {
+				return parsed.Format("2006-01-02")
+			}
+		}
+	}
+	if name == "get_historical_evidence" {
+		if evidence, err := ParseHistoricalEvidence(output); err == nil {
+			return evidence.DataTime
+		}
+	}
+	matches := outputISOTimePattern.FindAllString(output, -1)
+	times := make([]time.Time, 0, len(matches))
+	for _, raw := range matches {
+		if parsed, ok := parseToolTime(raw); ok {
+			times = append(times, parsed)
+		}
+	}
+	if len(times) == 0 {
+		return "unknown"
+	}
+	selected := times[0]
+	for _, candidate := range times[1:] {
+		if name == "get_macro_indicators" || name == "get_fundamentals" {
+			if candidate.Before(selected) {
+				selected = candidate
+			}
+		} else if candidate.After(selected) {
+			selected = candidate
+		}
+	}
+	if selected.Hour() == 0 && selected.Minute() == 0 && selected.Second() == 0 && !strings.Contains(matches[0], "T") {
+		return selected.Format("2006-01-02")
+	}
+	return selected.UTC().Format(time.RFC3339)
+}
+
+func inferToolObservationTimes(name, output string) []string {
+	observations := make([]string, 0)
+	switch name {
+	case "get_news", "get_global_news":
+		for _, observed := range publishedTimes(output) {
+			observations = append(observations, observed.UTC().Format(time.RFC3339))
+		}
+	case "get_fundamentals":
+		for _, value := range metadataValues(output, "As Of") {
+			if observed, ok := parseToolTime(value); ok && !containsString(observations, observed.Format("2006-01-02")) {
+				observations = append(observations, observed.Format("2006-01-02"))
+			}
+		}
+	case "get_historical_evidence":
+		if evidence, err := ParseHistoricalEvidence(output); err == nil {
+			for _, observation := range evidence.Observations {
+				observations = append(observations, observation.Date)
+			}
+		}
+	default:
+		for _, raw := range outputISOTimePattern.FindAllString(output, -1) {
+			if observed, ok := parseToolTime(raw); ok {
+				observations = append(observations, observed.Format("2006-01-02"))
+			}
+		}
+	}
+	return observations
+}
+
+func inferToolProvenance(name, output string) (provider, sourceURL, disclosureTime string) {
+	provider = metadataValue(output, "Provider")
+	if provider == "" {
+		provider = metadataValue(output, "Source")
+	}
+	sourceURL = metadataValue(output, "Source URL")
+	if name == "get_fundamentals" {
+		disclosureTime = metadataValue(output, "Filing Date")
+	}
+	return strings.TrimSpace(provider), strings.TrimSpace(sourceURL), strings.TrimSpace(disclosureTime)
+}
+
+func inferToolTimeGranularity(name, output string) string {
+	if value := metadataValue(output, "Time Granularity"); value != "" {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	if name == "get_news" || name == "get_global_news" {
+		return "second"
+	}
+	if name == "get_stock_data" || name == "get_fundamentals" || name == "get_historical_evidence" {
+		return "date"
+	}
+	return "unknown"
+}
+
+func metadataValue(output, key string) string {
+	values := metadataValues(output, key)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func metadataValues(output, key string) []string {
+	pattern := regexp.MustCompile(`(?im)(?:^|\|)\s*(?:-\s*)?` + regexp.QuoteMeta(key) + `:\s*([^|\r\n]+)`)
+	matches := pattern.FindAllStringSubmatch(output, -1)
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) >= 2 {
+			value := strings.TrimSpace(match[1])
+			if value != "" && !containsString(out, value) {
+				out = append(out, value)
+			}
+		}
+	}
+	return out
+}
+
+func inferFundamentalDisclosureTimes(name, output string) []string {
+	if name != "get_fundamentals" {
+		return nil
+	}
+	out := make([]string, 0)
+	for _, value := range metadataValues(output, "Filing Date") {
+		if parsed, ok := parseToolTime(value); ok {
+			formatted := parsed.Format("2006-01-02")
+			if !containsString(out, formatted) {
+				out = append(out, formatted)
+			}
+		}
+	}
+	return out
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func latestPublishedTime(output string) time.Time {
+	latest := time.Time{}
+	for _, parsed := range publishedTimes(output) {
+		if parsed.After(latest) {
+			latest = parsed
+		}
+	}
+	return latest
+}
+
+func publishedTimes(output string) []time.Time {
+	result := make([]time.Time, 0)
+	for _, line := range strings.Split(output, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), "Published:")
+		if !ok {
+			continue
+		}
+		for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC3339} {
+			if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+				result = append(result, parsed)
+				break
+			}
+		}
+	}
+	return result
+}
+
+func parseToolTime(value string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// FetchXPlayerTakes loads public StockTwits + X-mention chatter for the bound ticker.
+func (r *ToolRegistry) FetchXPlayerTakes() string {
+	takes, err := r.news.GetXPlayerTakes(r.ticker, 16)
+	if err != nil {
+		return FormatPlayerTakesForLLM(r.ticker, nil)
+	}
+	return FormatPlayerTakesForLLM(r.ticker, takes)
+}
+
 // getIndicators computes technical indicators from stock data.
 func (r *ToolRegistry) getIndicators(indicators string) (string, error) {
 	bars, err := r.yfinance.GetHistoricalData(r.ticker,
@@ -122,7 +499,7 @@ func (r *ToolRegistry) getIndicators(indicators string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Technical Indicators for %s (as of %s):\n\n", r.ticker, r.date))
+	sb.WriteString(fmt.Sprintf("Technical Indicators for %s (latest observation %s):\n\n", r.ticker, bars[len(bars)-1].Date))
 
 	requested := strings.Split(indicators, ",")
 	closes := extractCloses(bars)
@@ -240,47 +617,13 @@ func (r *ToolRegistry) yahooFallbackQuote(ticker string) (string, error) {
 }
 
 // toTVSymbol converts a standard ticker to TradingView exchange-prefixed format.
-// Uses TradingView's symbol-search API to determine the correct exchange.
 func toTVSymbol(ticker string) string {
-	ticker = strings.ToUpper(strings.TrimSpace(ticker))
-
-	// Already formatted
-	if strings.Contains(ticker, ":") {
-		return ticker
-	}
-
-	// Known exchange mappings for common tickers
-	amexTickers := map[string]bool{
-		"SOXL": true, "SOXS": true, "TQQQ": true, "SQQQ": true,
-		"SPXL": true, "SPXS": true, "TMF": true, "TMV": true,
-		"UPRO": true, "SPXU": true, "TNA": true, "TZA": true,
-		"QLD": true, "QID": true, "SSO": true, "SDS": true,
-		"UDOW": true, "SDOW": true, "TECL": true, "TECS": true,
-		"MIDU": true, "MIDD": true, "URE": true, "SRS": true,
-		"DRN": true, "DRV": true, "CURE": true, "DRIP": true,
-		"USLV": true, "DSLV": true, "AGQ": true, "ZSL": true,
-		"UGL": true, "GLL": true, "YINN": true, "YANG": true,
-		"EDC": true, "EDZ": true, "ERX": true, "ERY": true,
-		"FAS": true, "FAZ": true, "LABU": true, "LABD": true,
-		"NUGT": true, "DUST": true, "JNUG": true, "JDST": true,
-		"BZQ": true, "DGP": true, "DZZ": true, "GLD": true,
-		"SLV": true, "USO": true, "UNG": true, "UCO": true,
-		"BOIL": true, "KOLD": true, "SPY": true, "IVV": true,
-		"SH": true, "RSP": true,
-		// VIX-linked
-		"UVXY": true, "SVXY": true, "VIXY": true, "VXX": true,
-	}
-	if amexTickers[ticker] {
-		return "AMEX:" + ticker
-	}
-
-	// Default to NASDAQ (works for most common stocks)
-	return "NASDAQ:" + ticker
+	return ToTVSymbol(ticker)
 }
 
 // MarketToolDefs returns the tool definitions for the Market Analyst.
 func MarketToolDefs() []llm.ToolDef {
-	return []llm.ToolDef{
+	defs := []llm.ToolDef{
 		{
 			Name:        "get_stock_data",
 			Description: "Get historical OHLCV stock price data in CSV format for technical analysis",
@@ -319,11 +662,12 @@ func MarketToolDefs() []llm.ToolDef {
 			Required: []string{"symbols"},
 		},
 	}
+	return defs[:3]
 }
 
 // FundamentalsToolDefs returns tool definitions for the Fundamentals Analyst.
 func FundamentalsToolDefs() []llm.ToolDef {
-	return []llm.ToolDef{
+	defs := []llm.ToolDef{
 		{
 			Name:        "get_fundamentals",
 			Description: "Get comprehensive company fundamentals including profile, financial ratios, and key metrics",
@@ -357,11 +701,12 @@ func FundamentalsToolDefs() []llm.ToolDef {
 			Required: []string{"ticker"},
 		},
 	}
+	return defs[:1]
 }
 
 // NewsToolDefs returns tool definitions for the News Analyst.
 func NewsToolDefs() []llm.ToolDef {
-	return []llm.ToolDef{
+	defs := []llm.ToolDef{
 		{
 			Name:        "get_news",
 			Description: "Get recent news articles for a specific ticker",
@@ -394,11 +739,12 @@ func NewsToolDefs() []llm.ToolDef {
 			Parameters:  map[string]*llm.SchemaParam{},
 		},
 	}
+	return defs[:1]
 }
 
 // SentimentToolDefs returns tool definitions for the Sentiment Analyst.
 func SentimentToolDefs() []llm.ToolDef {
-	return []llm.ToolDef{
+	defs := []llm.ToolDef{
 		{
 			Name:        "get_news",
 			Description: "Get recent news articles for sentiment analysis",
@@ -407,17 +753,53 @@ func SentimentToolDefs() []llm.ToolDef {
 			},
 			Required: []string{"ticker"},
 		},
+		{
+			Name:        "get_x_player_takes",
+			Description: "Get public stock-player posts: StockTwits stream plus X/Twitter mentions indexed by Google News. Use this to contrast retail/trader chatter with the model view. Not official X API.",
+			Parameters: map[string]*llm.SchemaParam{
+				"ticker": {Type: "string", Description: "Stock ticker symbol"},
+			},
+			Required: []string{"ticker"},
+		},
 	}
+	return defs[:1]
 }
-
 
 // Helper functions
 
 func formatFundamentals(f *FundamentalData, ticker string) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Company Fundamentals for %s:\n\n", ticker))
+	sb.WriteString(fmt.Sprintf("Source: %s | Fiscal Period: %s | As Of: %s | Filing Date: %s | Accession: %s\n", f.Source, f.FiscalPeriod, f.AsOf, f.FilingDate, f.Accession))
+	if f.SourceURL != "" {
+		sb.WriteString(fmt.Sprintf("Source URL: %s\n", f.SourceURL))
+	}
+	if f.SourceFetchedAt != "" {
+		sb.WriteString(fmt.Sprintf("Source Fetched At: %s | Source Transport: %s | Source Content Hash: %s\n", f.SourceFetchedAt, f.SourceTransport, f.SourceContentHash))
+	}
+	if len(f.Periods) > 0 {
+		sb.WriteString("Financial Periods:\n")
+		for _, period := range f.Periods {
+			sb.WriteString(fmt.Sprintf("- Fiscal Period: %s | Frequency: %s | Form: %s | Period Start: %s | As Of: %s | Filing Date: %s | Accession: %s | Source URL: %s\n", period.FiscalPeriod, period.Frequency, period.Form, period.PeriodStart, period.PeriodEnd, period.FilingDate, period.Accession, period.SourceURL))
+			sb.WriteString(fmt.Sprintf("  Values: totalRevenue=%s grossProfit=%s operatingIncome=%s netIncome=%s totalAssets=%s totalLiabilities=%s stockholdersEquity=%s cashAndEquivalents=%s sharesOutstanding=%s\n",
+				formatPeriodMetric(period, "totalRevenue", period.TotalRevenue), formatPeriodMetric(period, "grossProfit", period.GrossProfit),
+				formatPeriodMetric(period, "operatingIncome", period.OperatingIncome), formatPeriodMetric(period, "netIncome", period.NetIncome),
+				formatPeriodMetric(period, "totalAssets", period.TotalAssets), formatPeriodMetric(period, "totalLiabilities", period.TotalLiabilities),
+				formatPeriodMetric(period, "stockholdersEquity", period.StockholdersEquity), formatPeriodMetric(period, "cashAndEquivalents", period.CashAndEquivalents),
+				formatPeriodMetric(period, "sharesOutstanding", period.SharesOutstanding)))
+		}
+	}
+	if len(f.DerivationInputs) > 0 {
+		sb.WriteString("Financial Derivation Inputs (not discrete quarters):\n")
+		for _, period := range f.DerivationInputs {
+			sb.WriteString(fmt.Sprintf("- Fiscal Period: %s | Frequency: %s | Form: %s | Period Start: %s | As Of: %s | Filing Date: %s | Accession: %s | Source URL: %s\n", period.FiscalPeriod, period.Frequency, period.Form, period.PeriodStart, period.PeriodEnd, period.FilingDate, period.Accession, period.SourceURL))
+			sb.WriteString(fmt.Sprintf("  Values: totalRevenue=%s netIncome=%s\n", formatPeriodMetric(period, "totalRevenue", period.TotalRevenue), formatPeriodMetric(period, "netIncome", period.NetIncome)))
+		}
+	}
 	sb.WriteString(fmt.Sprintf("Sector: %s | Industry: %s\n", f.Sector, f.Industry))
-	sb.WriteString(fmt.Sprintf("Employees: %d\n", f.FullTimeEmployees))
+	if f.FullTimeEmployees != nil {
+		sb.WriteString(fmt.Sprintf("Employees: %d\n", *f.FullTimeEmployees))
+	}
 	if f.LongBusinessSummary != "" {
 		summary := f.LongBusinessSummary
 		if len(summary) > 500 {
@@ -426,21 +808,59 @@ func formatFundamentals(f *FundamentalData, ticker string) string {
 		sb.WriteString(fmt.Sprintf("Business Summary: %s\n\n", summary))
 	}
 	sb.WriteString("| Metric | Value |\n|--------|-------|\n")
-	sb.WriteString(fmt.Sprintf("| Market Cap | %.0f |\n", f.MarketCap))
-	sb.WriteString(fmt.Sprintf("| Enterprise Value | %.0f |\n", f.EnterpriseValue))
-	sb.WriteString(fmt.Sprintf("| Profit Margin | %.2f%% |\n", f.ProfitMargin*100))
-	sb.WriteString(fmt.Sprintf("| Operating Margin | %.2f%% |\n", f.OperatingMargin*100))
-	sb.WriteString(fmt.Sprintf("| ROE | %.2f%% |\n", f.ReturnOnEquity*100))
-	sb.WriteString(fmt.Sprintf("| ROA | %.2f%% |\n", f.ReturnOnAssets*100))
-	sb.WriteString(fmt.Sprintf("| Revenue Growth | %.2f%% |\n", f.RevenueGrowth*100))
-	sb.WriteString(fmt.Sprintf("| Earnings Growth | %.2f%% |\n", f.EarningsGrowth*100))
-	sb.WriteString(fmt.Sprintf("| Debt/Equity | %.2f |\n", f.DebtToEquity))
-	sb.WriteString(fmt.Sprintf("| Current Ratio | %.2f |\n", f.CurrentRatio))
-	sb.WriteString(fmt.Sprintf("| Book Value | %.2f |\n", f.BookValue))
-	sb.WriteString(fmt.Sprintf("| Free Cash Flow | %.0f |\n", f.FreeCashflow))
-	sb.WriteString(fmt.Sprintf("| Total Revenue | %.0f |\n", f.TotalRevenue))
-	sb.WriteString(fmt.Sprintf("| EBITDA | %.0f |\n", f.EBITDA))
+	writeMetric := func(label, format string, value *float64) {
+		if value != nil {
+			sb.WriteString(fmt.Sprintf("| %s | "+format+" |\n", label, *value))
+		}
+	}
+	writeMetric("Market Cap", "%.0f", f.MarketCap)
+	writeMetric("Enterprise Value", "%.0f", f.EnterpriseValue)
+	writeMetric("Profit Margin", "%.4f", f.ProfitMargin)
+	writeMetric("Operating Margin", "%.4f", f.OperatingMargin)
+	writeMetric("ROE", "%.4f", f.ReturnOnEquity)
+	writeMetric("ROA", "%.4f", f.ReturnOnAssets)
+	writeMetric("Revenue Growth", "%.4f", f.RevenueGrowth)
+	writeMetric("Earnings Growth", "%.4f", f.EarningsGrowth)
+	writeMetric("Debt/Equity", "%.2f", f.DebtToEquity)
+	writeMetric("Current Ratio", "%.2f", f.CurrentRatio)
+	writeMetric("Book Value", "%.2f", f.BookValue)
+	writeMetric("Free Cash Flow", "%.0f", f.FreeCashflow)
+	writeMetric("Total Revenue", "%.0f", f.TotalRevenue)
+	writeMetric("EBITDA", "%.0f", f.EBITDA)
+	raw, _ := json.Marshal(f)
+	sb.WriteString("Fundamental Evidence JSON: ")
+	sb.Write(raw)
+	sb.WriteByte('\n')
 	return sb.String()
+}
+
+func formatPeriodMetric(period FinancialPeriod, field string, value float64) string {
+	for _, available := range period.AvailableFields {
+		if available == field {
+			return fmt.Sprintf("%.0f", value)
+		}
+	}
+	return "unknown"
+}
+
+// FormatFundamentalsForEvidence exposes the canonical structured review format
+// to fixture builders without duplicating the serialization contract.
+func FormatFundamentalsForEvidence(f *FundamentalData, ticker string) string {
+	return formatFundamentals(f, ticker)
+}
+
+func ParseFundamentalEvidence(output string) (FundamentalData, error) {
+	const marker = "Fundamental Evidence JSON: "
+	index := strings.Index(output, marker)
+	if index < 0 {
+		return FundamentalData{}, fmt.Errorf("structured fundamental evidence is missing")
+	}
+	raw := strings.TrimSpace(output[index+len(marker):])
+	var evidence FundamentalData
+	if err := json.Unmarshal([]byte(raw), &evidence); err != nil {
+		return FundamentalData{}, err
+	}
+	return evidence, nil
 }
 
 func (r *ToolRegistry) argStr(args map[string]any, key, fallback string) string {

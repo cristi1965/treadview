@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { StockGodShell } from '../components/layout/StockGodShell';
-import { apiUrl } from '../utils/api';
+import { DataStatus } from '../components/common/DataStatus';
+import { getWithMeta as apiGetWithMeta, type APIResponseMeta } from '../utils/api';
 
 type TradeRow = {
   action: string;
@@ -9,6 +10,11 @@ type TradeRow = {
   amount: string;
   date: string;
   title?: string;
+  source: string;
+  filingDate: string;
+  sourceURL: string;
+  filingId: string;
+  verified: boolean;
 };
 
 type PoliticianDetail = {
@@ -29,21 +35,27 @@ export const PoliticianDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [detail, setDetail] = useState<PoliticianDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [meta, setMeta] = useState<APIResponseMeta | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setError('');
+      setMeta(null);
       try {
-        const res = await fetch(apiUrl(`/api/whales/congress/${encodeURIComponent(slug)}`));
-        if (!res.ok) {
-          if (!cancelled) setDetail(null);
-          return;
+        const result = await apiGetWithMeta<PoliticianDetail>(`/api/whales/congress/${encodeURIComponent(slug)}`);
+        if (!cancelled) {
+          setDetail(result.data);
+          setMeta(result.meta);
         }
-        const data = (await res.json()) as PoliticianDetail;
-        if (!cancelled) setDetail(data);
-      } catch {
-        if (!cancelled) setDetail(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          setDetail(null);
+          setError(loadError instanceof Error ? loadError.message : '国会披露加载失败');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -51,7 +63,7 @@ export const PoliticianDetailPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, retryNonce]);
 
   if (loading) {
     return (
@@ -65,8 +77,12 @@ export const PoliticianDetailPage: React.FC = () => {
     return (
       <StockGodShell title="国会交易">
         <div className="rounded-xl border border-line bg-surface p-10 text-center text-muted">
-          未找到该议员
+          <h1 className="text-lg font-semibold text-ink">国会披露暂不可用</h1>
+          <p className="mt-2 text-sm text-muted">{error || '未找到该议员。'}</p>
           <div className="mt-3">
+            <button type="button" className="mr-4 text-accent underline" onClick={() => setRetryNonce((value) => value + 1)}>
+              重试
+            </button>
             <button type="button" className="text-accent underline" onClick={() => navigate('/whales')}>
               返回聪明钱
             </button>
@@ -111,21 +127,40 @@ export const PoliticianDetailPage: React.FC = () => {
           </div>
         </header>
 
+        <div className="mb-4">
+          <DataStatus
+            state={meta?.stale ? 'stale' : meta?.source ? 'live' : 'unavailable'}
+            dataTime={meta?.dataTime}
+            source={meta?.source}
+            message={meta?.staleReason}
+            onRetry={() => setRetryNonce((value) => value + 1)}
+            compact
+          />
+        </div>
+
+        {!detail.trades?.some((trade) => trade.verified) && (
+          <div className="mb-4 rounded-xl border border-amber-500/35 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+            未核验历史样本：缺少可定位原文或申报标识，不作为投资信号。
+          </div>
+        )}
+
         <section className="overflow-hidden rounded-xl border border-line bg-surface">
           <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">交易明细</div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-surface-2 text-xs text-faint">
                 <tr>
                   <th className="px-4 py-2 font-medium">日期</th>
                   <th className="px-4 py-2 font-medium">方向</th>
                   <th className="px-4 py-2 font-medium">标的</th>
                   <th className="px-4 py-2 font-medium">金额</th>
+                  <th className="px-4 py-2 font-medium">申报/来源</th>
+                  <th className="px-4 py-2 font-medium">原文</th>
                 </tr>
               </thead>
               <tbody>
                 {(detail.trades || []).map((t, i) => (
-                  <tr key={`${t.date}-${t.symbol}-${i}`} className="border-t border-line/70">
+                  <tr key={`${t.date}-${t.symbol}-${i}`} className={`border-t border-line/70 ${t.verified ? '' : 'bg-amber-500/5 opacity-75'}`}>
                     <td className="px-4 py-2.5 text-muted">{t.date || '—'}</td>
                     <td
                       className={`px-4 py-2.5 font-medium ${
@@ -144,11 +179,24 @@ export const PoliticianDetailPage: React.FC = () => {
                       </button>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-muted">{t.amount || '—'}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted">
+                      <div>{t.filingDate || 'unknown'}</div>
+                      <div className="text-faint">{t.source || 'unknown'}</div>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {t.sourceURL && t.sourceURL !== 'unknown' ? (
+                        <a href={t.sourceURL} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                          {t.filingId && t.filingId !== 'unknown' ? t.filingId : '查看来源'}
+                        </a>
+                      ) : (
+                        <span className="text-down">unknown</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {!detail.trades?.length && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted">
                       暂无交易记录
                     </td>
                   </tr>

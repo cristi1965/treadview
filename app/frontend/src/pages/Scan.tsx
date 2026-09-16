@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldAlert, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { StockGodShell } from '../components/layout/StockGodShell';
 import { EmptyState, LoadingSpinner } from '../components/common';
+import { DataStatus } from '../components/common/DataStatus';
 import { RadarChart } from '../components/scan';
 import { useStocksStore } from '../stores/stocksStore';
+import { usePortfolioStore } from '../stores/portfolioStore';
 import { useDebounce } from '../hooks/useDebounce';
 import { Stock } from '../types/stocks';
 import { formatPrice, formatPercent, formatAUM, formatNumber, getChangeColorClass } from '../utils/format';
+import { SCAN_PRESETS } from '../utils/presets';
+import { useI18n } from '../i18n';
+import { startQuotePolling } from '../utils/liveQuotes';
 
 type RiskFilter = 'all' | 'only-risk' | 'hide-risk';
 type JudgementFilter = 'all' | 'judged' | 'high-score' | 'consensus' | 'divergence';
@@ -15,8 +20,8 @@ type BullishLens = 'all' | keyof Stock['scores'];
 type CapFilter = 'all' | 'large' | 'mid' | 'small';
 
 const MARKET_TABS = [
-  { id: 'us', label: '美股 · 全市场', count: 6151 },
-  { id: 'cn', label: 'A 股 · 全市场', count: 5504 },
+  { id: 'us', label: '美股 · 全市场' },
+  { id: 'cn', label: 'A 股 · 全市场' },
 ];
 
 const BULLISH_LENSES: Array<{ id: BullishLens; label: string }> = [
@@ -51,8 +56,9 @@ const LIVE_US_SECTOR_ORDER = [
   'Communication Services',
 ];
 
-const scoreTooltip = (stock: Stock) =>
-  `巴菲特 ${stock.scores.buffett} · 段永平 ${stock.scores.duanyongping} · Serenity ${stock.scores.serenity} · 德鲁肯米勒 ${stock.scores.druckenmiller} · 情绪资金面 ${stock.scores.sentiment} · 分歧 ${Math.round(stock.divergence ?? 0)}`;
+const scoreTooltip = (stock: Stock) => stock.judged
+  ? `巴菲特 ${stock.scores.buffett} · 段永平 ${stock.scores.duanyongping} · Serenity ${stock.scores.serenity} · 德鲁肯米勒 ${stock.scores.druckenmiller} · 情绪资金面 ${stock.scores.sentiment} · 分歧 ${Math.round(stock.divergence ?? 0)}`
+  : '评分来源不可用';
 
 const getScoreColor = (score: number): string => {
   if (score >= 70) return 'text-up';
@@ -66,6 +72,10 @@ const capMatches = (marketCap: number, filter: CapFilter) => {
   if (filter === 'small') return marketCap < 2_000_000_000;
   return true;
 };
+
+const hasCurrentQuote = (stock: Stock) => Boolean(
+  stock.quoteStale === false && stock.quoteSource && stock.quoteDataTime && stock.quoteDataTime !== 'unknown'
+);
 
 const Chip: React.FC<{ active: boolean; danger?: boolean; children: React.ReactNode; onClick: () => void }> = ({
   active,
@@ -88,7 +98,9 @@ const Chip: React.FC<{ active: boolean; danger?: boolean; children: React.ReactN
 );
 
 export const Scan: React.FC = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     stocks,
     allUsStocks,
@@ -108,6 +120,10 @@ export const Scan: React.FC = () => {
     consensusCount,
     divergenceCount,
     dilutionCount,
+    quoteState,
+    quoteSource,
+    quoteDataTime,
+    quoteMessage,
     fetchStocks,
     refreshQuotes,
     setMarket,
@@ -117,6 +133,7 @@ export const Scan: React.FC = () => {
     setPage,
     toggleWatch,
   } = useStocksStore();
+  const watchlist = usePortfolioStore((state) => state.watchlist);
 
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('all');
   const [judgementFilter, setJudgementFilter] = useState<JudgementFilter>('all');
@@ -125,46 +142,46 @@ export const Scan: React.FC = () => {
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [localPage, setLocalPage] = useState(1);
+  const [presetId, setPresetId] = useState<string>('none');
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const quoteUsable = quoteState === 'live';
+  const watchedSymbols = useMemo(
+    () => new Set(watchlist.map((item) => item.symbol.toUpperCase())),
+    [watchlist]
+  );
 
   useEffect(() => {
-    fetchStocks();
-  }, []);
+    const marketParam = searchParams.get('market');
+    const requestedMarket = marketParam === 'cn' || marketParam === 'us' ? marketParam : null;
+    const requestedQuery = searchParams.get('q')?.trim() || '';
+    if (requestedMarket) setMarket(requestedMarket);
+    if (searchParams.has('q')) setSearchQuery(requestedQuery);
+  }, [searchParams, setMarket, setSearchQuery]);
 
   useEffect(() => {
     fetchStocks();
   }, [debouncedSearch, market, sortBy, order, page]);
 
-  // Live quotes for current scan page (20s)
+  // The visible scan page is a lower-frequency tier than positions and stock detail.
   useEffect(() => {
-    let cancelled = false;
-    const tick = async () => {
-      if (cancelled || document.hidden) return;
-      await refreshQuotes();
-    };
-    void tick();
-    const id = window.setInterval(() => void tick(), 20_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return startQuotePolling(refreshQuotes, 45_000, { immediate: false });
   }, [refreshQuotes, market, page, debouncedSearch]);
 
   useEffect(() => {
     setLocalPage(1);
     setPage(1);
-  }, [riskFilter, judgementFilter, bullishLens, capFilter, sectorFilter, debouncedSearch, market, sortBy, order]);
+  }, [riskFilter, judgementFilter, bullishLens, capFilter, sectorFilter, presetId, debouncedSearch, market, sortBy, order]);
 
   const marketSource = market === 'cn' ? allCnStocks : allUsStocks;
 
   const scoreFilters = useMemo(
     () =>
       [
-        { id: 'all' as JudgementFilter, label: `全部` },
-        { id: 'judged' as JudgementFilter, label: `已判读(${judgedCount || '—'})` },
-        { id: 'high-score' as JudgementFilter, label: `高分 均≥65(${highScoreCount || '—'})` },
-        { id: 'consensus' as JudgementFilter, label: `共识好票(${consensusCount || '—'})` },
-        { id: 'divergence' as JudgementFilter, label: `分歧大(${divergenceCount || '—'})` },
+        { id: 'all' as JudgementFilter, label: t('scan.jAll') },
+        { id: 'judged' as JudgementFilter, label: t('scan.jJudged', { n: judgedCount || '—' }) },
+        { id: 'high-score' as JudgementFilter, label: t('scan.jHigh', { n: highScoreCount || '—' }) },
+        { id: 'consensus' as JudgementFilter, label: t('scan.jCons', { n: consensusCount || '—' }) },
+        { id: 'divergence' as JudgementFilter, label: t('scan.jDiv', { n: divergenceCount || '—' }) },
       ] as const,
     [judgedCount, highScoreCount, consensusCount, divergenceCount]
   );
@@ -184,8 +201,9 @@ export const Scan: React.FC = () => {
   }, [marketSource, stocks]);
 
   const applyRowFilters = (stock: Stock) => {
-    const riskFlagged =
-      stock.hasDilution || (stock.postAnalysisChange ?? 0) <= -4 || (stock.judged && stock.avgScore < 45);
+    const preset = SCAN_PRESETS.find((p) => p.id === presetId);
+    if (preset && !preset.filter(stock)) return false;
+    const riskFlagged = stock.hasDilution || (stock.judged && stock.avgScore < 45);
     if (riskFilter === 'only-risk' && !riskFlagged) return false;
     if (riskFilter === 'hide-risk' && riskFlagged) return false;
     if (judgementFilter === 'judged' && !(stock.judged || stock.avgScore > 0)) return false;
@@ -215,24 +233,25 @@ export const Scan: React.FC = () => {
     }
     const dir = order === 'asc' ? 1 : -1;
     list = [...list].sort((a, b) => {
+      const effectiveSort = !quoteUsable && (sortBy === 'price' || sortBy === 'change') ? 'marketcap' : sortBy;
       const av =
-        sortBy === 'price'
+        effectiveSort === 'price'
           ? a.price
-          : sortBy === 'change'
+          : effectiveSort === 'change'
             ? a.changePercent
-            : sortBy === 'avgscore'
+            : effectiveSort === 'avgscore'
               ? a.avgScore
-              : sortBy === 'volume'
+              : effectiveSort === 'volume'
                 ? a.volume
                 : a.marketCap;
       const bv =
-        sortBy === 'price'
+        effectiveSort === 'price'
           ? b.price
-          : sortBy === 'change'
+          : effectiveSort === 'change'
             ? b.changePercent
-            : sortBy === 'avgscore'
+            : effectiveSort === 'avgscore'
               ? b.avgScore
-              : sortBy === 'volume'
+              : effectiveSort === 'volume'
                 ? b.volume
                 : b.marketCap;
       return (av - bv) * dir;
@@ -246,9 +265,13 @@ export const Scan: React.FC = () => {
     bullishLens,
     capFilter,
     sectorFilter,
+    presetId,
+    marketSource,
+    stocks,
     debouncedSearch,
     sortBy,
     order,
+    quoteUsable,
   ]);
 
   const pageSize = limit || 50;
@@ -259,8 +282,7 @@ export const Scan: React.FC = () => {
   }, [fullyFiltered, activePage, pageSize]);
 
   const apiTotal = fullyFiltered.length;
-  const marketSnapshotTotal =
-    market === 'cn' ? allCnStocks.length || 5504 : allUsStocks.length || 6151;
+  const marketSnapshotTotal = market === 'cn' ? allCnStocks.length : allUsStocks.length;
   const maxPage = Math.max(1, Math.ceil(apiTotal / pageSize));
   const goPage = (next: number) => {
     const clamped = Math.min(maxPage, Math.max(1, next));
@@ -269,6 +291,7 @@ export const Scan: React.FC = () => {
   };
 
   const handleSort = (field: 'marketcap' | 'price' | 'change' | 'avgscore' | 'volume') => {
+    if (!quoteUsable && (field === 'price' || field === 'change')) return;
     if (sortBy === field) {
       setOrder(order === 'asc' ? 'desc' : 'asc');
     } else {
@@ -282,7 +305,8 @@ export const Scan: React.FC = () => {
   const sortableHeader = (label: string, field: 'marketcap' | 'price' | 'change' | 'avgscore' | 'volume', className = '') => (
     <th className={`px-3 py-2 text-xs font-medium ${className}`}>
       <button
-        className={`inline-flex items-center transition hover:text-ink ${sortBy === field ? 'text-accent' : 'text-muted'}`}
+        disabled={!quoteUsable && (field === 'price' || field === 'change')}
+        className={`inline-flex items-center transition disabled:cursor-not-allowed disabled:opacity-40 ${sortBy === field ? 'text-accent' : 'text-muted hover:text-ink'}`}
         onClick={() => handleSort(field)}
       >
         {label}
@@ -292,17 +316,26 @@ export const Scan: React.FC = () => {
   );
 
   return (
-    <StockGodShell title="列表" searchQuery={searchQuery} onSearchChange={setSearchQuery}>
+    <StockGodShell title={t('nav.scan')} searchQuery={searchQuery} onSearchChange={setSearchQuery}>
       <div className="space-y-4">
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-3">
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink">全市场扫描</h1>
-          <p className="text-sm text-muted">美股 + A股 · 五方判读(段永平/巴菲特/Serenity/德鲁肯米勒/情绪)</p>
-          <button onClick={() => navigate('/portfolio')} className="ml-auto text-xs font-medium text-accent hover:text-ink">我的观察列表</button>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">{t('scan.title')}</h1>
+          <p className="text-sm text-muted">{t('scan.sub')}</p>
+          <button onClick={() => navigate('/portfolio')} className="ml-auto text-xs font-medium text-accent hover:text-ink">{t('scan.watch')}</button>
         </header>
 
         <p className="rounded-lg border border-line bg-surface-2/60 px-3 py-2 text-[11px] leading-relaxed text-muted">
-          AI 方法论模拟 —— 巴菲特 / 段永平 / 德鲁肯米勒 / Serenity 的评分由 AI 依据各自公开方法论生成,并非本人真实观点或持仓,亦不代表其本人。非投资建议。
+          {t('home.aiDisclaimer')}
         </p>
+
+        <DataStatus
+          state={quoteState}
+          label={quoteUsable ? '列表报价可用' : '列表报价不可用于当前决策'}
+          source={quoteSource}
+          dataTime={quoteDataTime}
+          message={quoteMessage || (!quoteUsable ? '静态清单仍可浏览，但价格、涨跌和判后变化已隐藏。' : undefined)}
+          onRetry={() => void refreshQuotes()}
+        />
 
         <div className="space-y-2.5">
           <div className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm">
@@ -314,16 +347,40 @@ export const Scan: React.FC = () => {
                   market === tab.id ? 'bg-surface-3 text-ink' : 'text-muted hover:text-ink'
                 }`}
               >
-                {tab.label} {tab.count && tab.id === market ? tab.count : ''}
+              {t(tab.id === 'us' ? 'scan.tabUS' : 'scan.tabCN')} {tab.id === market && marketSnapshotTotal > 0 ? marketSnapshotTotal : ''}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPresetId('none')}
+              className={`rounded-full px-2.5 py-1 text-[11px] ${presetId === 'none' ? 'bg-surface-3 text-ink' : 'bg-surface-2 text-muted'}`}
+            >
+              {t('scan.presetAll')}
+            </button>
+            {SCAN_PRESETS.filter((p) => p.market === market).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                title={p.describe}
+                onClick={() => {
+                  setPresetId(p.id);
+                  if (p.sortBy) setSortBy(p.sortBy);
+                }}
+                className={`rounded-full px-2.5 py-1 text-[11px] ${presetId === p.id ? 'bg-accent/15 text-accent' : 'bg-surface-2 text-muted'}`}
+              >
+                {p.label}
               </button>
             ))}
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-[13px]">
-            <span className="font-medium text-ink">股票 {marketSnapshotTotal} 只</span>
-            <span className="font-mono text-up">↑ {upCount || '—'} 涨</span>
-            <span className="font-mono text-down">↓ {downCount || '—'} 跌</span>
-            <span className="text-faint">数据 = /data/us-stocks + 五方面板 · 点列头排序</span>
+            <span className="font-medium text-ink">{t('scan.count', { n: marketSnapshotTotal })}</span>
+            <span className="font-mono text-up">↑ {t('scan.up', { n: quoteUsable ? upCount : '—' })}</span>
+            <span className="font-mono text-down">↓ {t('scan.down', { n: quoteUsable ? downCount : '—' })}</span>
+            <span className="text-faint">{t('scan.dataHint')}</span>
           </div>
         </div>
 
@@ -334,12 +391,12 @@ export const Scan: React.FC = () => {
               className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/10 px-3 py-1.5 text-sm font-semibold text-accent transition hover:bg-accent/15"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              筛选 {filtersOpen ? '▾' : '▸'}
+              {t('scan.filter')} {filtersOpen ? '▾' : '▸'}
             </button>
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="搜代码 / 公司 / 行业…"
+              placeholder={t('scan.searchPh')}
               className="min-h-9 w-full rounded-lg border border-line bg-base px-3 text-sm text-ink outline-none placeholder:text-faint focus:border-accent/50 sm:w-64"
             />
           </div>
@@ -349,17 +406,17 @@ export const Scan: React.FC = () => {
               <div>
                 <div className="mb-2 flex items-center gap-1.5 text-xs text-muted">
                   <ShieldAlert className="h-3.5 w-3.5 text-down" />
-                  印股票风险:
+                  {t('scan.risk')}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Chip active={riskFilter === 'all'} danger onClick={() => setRiskFilter('all')}>
                     全部
                   </Chip>
                   <Chip active={riskFilter === 'only-risk'} onClick={() => setRiskFilter('only-risk')}>
-                    只看({dilutionCount || '—'})
+                    {t('scan.onlyRisk', { n: dilutionCount || '—' })}
                   </Chip>
                   <Chip active={riskFilter === 'hide-risk'} onClick={() => setRiskFilter('hide-risk')}>
-                    隐藏风险
+                    {t('scan.hideRisk')}
                   </Chip>
                 </div>
               </div>
@@ -367,7 +424,7 @@ export const Scan: React.FC = () => {
               <div>
                 <div className="mb-2 flex items-center gap-1.5 text-xs text-muted">
                   <Sparkles className="h-3.5 w-3.5 text-accent" />
-                  五方判读:
+                  {t('scan.five')}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {scoreFilters.map((filter) => (
@@ -379,7 +436,7 @@ export const Scan: React.FC = () => {
               </div>
 
               <div>
-                <div className="mb-2 text-xs text-muted">谁看多 ≥70:</div>
+                <div className="mb-2 text-xs text-muted">{t('scan.bullish')}</div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {BULLISH_LENSES.map((lens) => (
                     <Chip key={lens.id} active={bullishLens === lens.id} onClick={() => setBullishLens(lens.id)}>
@@ -390,7 +447,7 @@ export const Scan: React.FC = () => {
               </div>
 
               <div>
-                <div className="mb-2 text-xs text-muted">市值:</div>
+                <div className="mb-2 text-xs text-muted">{t('scan.cap')}</div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {CAP_FILTERS.map((filter) => (
                     <Chip key={filter.id} active={capFilter === filter.id} onClick={() => setCapFilter(filter.id)}>
@@ -401,7 +458,7 @@ export const Scan: React.FC = () => {
               </div>
 
               <div>
-                <div className="mb-2 text-xs text-muted">行业:</div>
+                <div className="mb-2 text-xs text-muted">{t('scan.sector')}</div>
                 <div className="flex max-h-none flex-wrap items-center gap-1.5 sm:max-h-[60px] sm:overflow-y-auto">
                   <Chip active={sectorFilter === 'all'} onClick={() => setSectorFilter('all')}>
                     全部
@@ -425,48 +482,52 @@ export const Scan: React.FC = () => {
 
         {error && (
           <EmptyState
-            title="加载失败"
+            title={t('scan.loadFail')}
             description={error}
             action={{
-              label: '重试',
+              label: t('scan.retry'),
               onClick: fetchStocks,
             }}
           />
         )}
 
-        {!loading && !error && filteredStocks.length === 0 && <EmptyState title="没有找到股票" description="尝试调整搜索或筛选条件" />}
+        {!loading && !error && filteredStocks.length === 0 && <EmptyState title={t('scan.empty')} description={t('scan.emptyDesc')} />}
 
         {filteredStocks.length > 0 && (
           <>
             <div className="divide-y divide-line/60 rounded-xl border border-line bg-surface sm:hidden">
-              {filteredStocks.map((stock, index) => (
+              {filteredStocks.map((stock, index) => {
+                const isWatched = watchedSymbols.has(stock.symbol.toUpperCase());
+                return (
                 <article key={stock.symbol} className="flex cursor-pointer items-center gap-2 px-3 py-2.5" onClick={() => navigate(`/stock/${stock.symbol}`)}>
                   <span className="w-5 shrink-0 text-right font-mono text-[11px] text-faint">{(activePage - 1) * pageSize + index + 1}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-ink">{stock.symbol}</span>
-                      <span className={`font-mono text-xs font-semibold ${getChangeColorClass(stock.changePercent)}`}>{formatPercent(stock.changePercent)}</span>
+                      <span className={`font-mono text-xs font-semibold ${quoteUsable && hasCurrentQuote(stock) ? getChangeColorClass(stock.changePercent) : 'text-faint'}`}>
+                        {quoteUsable && hasCurrentQuote(stock) ? formatPercent(stock.changePercent) : '报价过期'}
+                      </span>
                     </div>
                     <div className="truncate text-xs text-muted">{stock.name}</div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-faint">
                       <span>{formatAUM(stock.marketCap)}</span>
-                      <span className={getScoreColor(stock.avgScore)}>均 {Math.round(stock.avgScore)}</span>
+                      <span className={stock.judged ? getScoreColor(stock.avgScore) : 'text-faint'}>均 {stock.judged ? Math.round(stock.avgScore) : '—'}</span>
                       <span>{stock.sector}</span>
-                      <span className={getChangeColorClass(stock.postAnalysisChange ?? 0)}>判后 {formatPercent(stock.postAnalysisChange ?? 0)}</span>
                     </div>
                   </div>
                   <button
-                    aria-label={stock.isWatched ? '移出 watchlist' : '加入 watchlist'}
-                    className={`shrink-0 px-2 py-2 text-lg transition ${stock.isWatched ? 'text-accent' : 'text-faint hover:text-accent'}`}
+                    aria-label={isWatched ? '移出 watchlist' : '加入 watchlist'}
+                    className={`shrink-0 px-2 py-2 text-lg transition ${isWatched ? 'text-accent' : 'text-faint hover:text-accent'}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleWatch(stock.symbol);
                     }}
                   >
-                    {stock.isWatched ? '★' : '☆'}
+                    {isWatched ? '★' : '☆'}
                   </button>
                 </article>
-              ))}
+                );
+              })}
             </div>
 
             <div className="hidden overflow-x-auto rounded-xl border border-line sm:block">
@@ -474,20 +535,21 @@ export const Scan: React.FC = () => {
                 <thead>
                   <tr className="border-b border-line bg-base/40">
                     <th className="px-3 py-2 text-right text-xs font-medium text-faint">#</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted">代码 / 名称</th>
-                    {sortableHeader('价格', 'price', 'text-right')}
-                    {sortableHeader('涨跌%', 'change', 'text-right')}
-                    {sortableHeader('市值', 'marketcap', 'text-right')}
-                    <th className="px-3 py-2 text-center text-xs font-medium text-muted">五方</th>
-                    {sortableHeader('均分', 'avgscore', 'text-right')}
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted">判读后</th>
-                    {sortableHeader('成交量', 'volume', 'hidden text-right md:table-cell')}
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted">行业</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted">{t('scan.colSym')}</th>
+                    {sortableHeader(t('scan.colPx'), 'price', 'text-right')}
+                    {sortableHeader(t('scan.colChg'), 'change', 'text-right')}
+                    {sortableHeader(t('scan.colMcap'), 'marketcap', 'text-right')}
+                    <th className="px-3 py-2 text-center text-xs font-medium text-muted">{t('scan.colFive')}</th>
+                    {sortableHeader(t('scan.colAvg'), 'avgscore', 'text-right')}
+                    {sortableHeader(t('scan.colVol'), 'volume', 'hidden text-right md:table-cell')}
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted">{t('scan.colSec')}</th>
                     <th className="px-2 py-2 text-center text-xs font-medium text-muted">☆</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStocks.map((stock, index) => (
+                  {filteredStocks.map((stock, index) => {
+                    const isWatched = watchedSymbols.has(stock.symbol.toUpperCase());
+                    return (
                     <tr
                       key={stock.symbol}
                       className="border-b border-line/60 transition last:border-b-0 hover:bg-surface-2"
@@ -498,34 +560,34 @@ export const Scan: React.FC = () => {
                         <div className="font-mono text-sm font-semibold text-ink">{stock.symbol}</div>
                         <div className="max-w-[210px] truncate text-xs text-muted">{stock.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-sm text-ink">{formatPrice(stock.price)}</td>
-                      <td className={`px-3 py-2 text-right font-mono text-sm font-semibold ${getChangeColorClass(stock.changePercent)}`}>
-                        {formatPercent(stock.changePercent)}
+                      <td className="px-3 py-2 text-right font-mono text-sm text-ink">{quoteUsable && hasCurrentQuote(stock) ? formatPrice(stock.price) : '—'}</td>
+                      <td className={`px-3 py-2 text-right font-mono text-sm font-semibold ${quoteUsable && hasCurrentQuote(stock) ? getChangeColorClass(stock.changePercent) : 'text-faint'}`}>
+                        {quoteUsable && hasCurrentQuote(stock) ? formatPercent(stock.changePercent) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-sm text-muted">{formatAUM(stock.marketCap)}</td>
                       <td className="px-3 py-2 text-center" title={scoreTooltip(stock)}>
-                        <RadarChart scores={stock.scores} size={30} />
+                        {stock.judged ? <RadarChart scores={stock.scores} size={30} /> : <span className="text-faint">—</span>}
                       </td>
-                      <td className={`px-3 py-2 text-right font-mono text-sm font-semibold ${getScoreColor(stock.avgScore)}`}>{Math.round(stock.avgScore)}</td>
-                      <td className={`px-3 py-2 text-right font-mono text-sm font-semibold ${getChangeColorClass(stock.postAnalysisChange ?? 0)}`}>
-                        {formatPercent(stock.postAnalysisChange ?? 0)}
+                      <td className={`px-3 py-2 text-right font-mono text-sm font-semibold ${stock.judged ? getScoreColor(stock.avgScore) : 'text-faint'}`}>
+                        {stock.judged ? Math.round(stock.avgScore) : '—'}
                       </td>
                       <td className="hidden px-3 py-2 text-right font-mono text-xs text-muted md:table-cell">{formatNumber(stock.volume)}</td>
                       <td className="max-w-[150px] overflow-hidden truncate px-3 py-2 text-left text-xs text-muted">{stock.sector}</td>
                       <td className="px-2 py-2 text-center">
                         <button
-                          aria-label={stock.isWatched ? '移出 watchlist' : '加入 watchlist'}
-                          className={`rounded px-1.5 text-base transition ${stock.isWatched ? 'text-accent' : 'text-faint hover:text-accent'}`}
+                          aria-label={isWatched ? '移出 watchlist' : '加入 watchlist'}
+                          className={`rounded px-1.5 text-base transition ${isWatched ? 'text-accent' : 'text-faint hover:text-accent'}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             toggleWatch(stock.symbol);
                           }}
                         >
-                          {stock.isWatched ? '★' : '☆'}
+                          {isWatched ? '★' : '☆'}
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -540,14 +602,14 @@ export const Scan: React.FC = () => {
                   onClick={() => goPage(1)}
                   disabled={activePage === 1}
                 >
-                  « 首页
+                  {t('scan.first')}
                 </button>
                 <button
                   className="inline-flex min-h-9 items-center rounded-md border border-line px-3 py-2 text-xs text-muted transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:border-line/50 disabled:text-faint/50"
                   onClick={() => goPage(activePage - 1)}
                   disabled={activePage === 1}
                 >
-                  ‹ 上一页
+                  {t('scan.prev')}
                 </button>
                 <span className="px-2 font-mono text-xs text-faint">
                   {activePage} / {maxPage}
@@ -557,14 +619,14 @@ export const Scan: React.FC = () => {
                   onClick={() => goPage(activePage + 1)}
                   disabled={activePage >= maxPage}
                 >
-                  下一页 ›
+                  {t('scan.next')}
                 </button>
                 <button
                   className="hidden min-h-9 rounded-md border border-line px-3 py-2 text-xs text-muted transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:border-line/50 disabled:text-faint/50 sm:inline-flex"
                   onClick={() => goPage(maxPage)}
                   disabled={activePage >= maxPage}
                 >
-                  末页 »
+                  {t('scan.last')}
                 </button>
               </div>
             </div>
@@ -572,7 +634,7 @@ export const Scan: React.FC = () => {
         )}
 
         <footer className="mt-16 border-t border-line pt-6 text-center text-xs text-faint">
-          我不是神 · Not a Stock God · A股 + 美股统一五方判读（非投资建议）
+          {t('scan.footer')}
         </footer>
       </div>
     </StockGodShell>

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"trading-agents/internal/market"
 	"trading-agents/internal/models"
 	"trading-agents/internal/scoring"
 )
@@ -47,6 +48,12 @@ func (h *Handler) GetStocks(c *gin.Context) {
 	if req.Market == "" {
 		req.Market = "us"
 	}
+	marketCode, err := normalizeStocksMarket(req.Market)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Market = marketCode
 	if req.Sort == "" {
 		req.Sort = "marketcap"
 	}
@@ -96,10 +103,69 @@ func (h *Handler) GetStocks(c *gin.Context) {
 		end = total
 	}
 
-	// X-Data-Source 方便验收时看清数据来自哪份快照
-	c.Header("X-Data-Source", meta)
+	page := stocks[start:end]
+	liveTimedOut := false
+	var usQuotes quoteFetchResult
+	if strings.EqualFold(req.Market, "us") {
+		page, usQuotes = enrichStocksCachedQuotes(page)
+	} else if isCNMarket(req.Market) {
+		page, liveTimedOut = enrichStocksLiveQuotesStatus(page)
+	}
+
+	// X-Data-Source 方便验收时看清数据来自哪份快照 / live
+	metaOut := meta
+	dataTime := dataTimeFromSource(meta)
+	stale := true
+	staleReason := "live quotes unavailable; serving last real snapshot"
+	if strings.EqualFold(req.Market, "us") {
+		dataTime = usQuotes.dataTimeLabel
+		stale, staleReason = quoteResultFreshness(usQuotes, time.Now())
+		trustedCount := trustedQuoteCoverage(usQuotes.quotes)
+		complete := len(page) == trustedCount && !strings.HasPrefix(usQuotes.source, "stale-snapshot:") && usQuotes.source != "unverified-provider-time"
+		if !complete {
+			stale = true
+			staleReason = fmt.Sprintf("cached provider coverage is incomplete (%d/%d); serving real snapshot values for the remainder", trustedCount, len(page))
+		}
+		state := "stale-cached"
+		if complete && staleReason == "market session is closed; quote is the last provider observation" {
+			state = "closed-" + usQuotes.source
+		} else if complete && !stale {
+			state = "live-" + usQuotes.source
+		}
+		metaOut = meta + "+" + state
+		if dataTime != "" {
+			metaOut += "@" + dataTime
+		}
+	}
+	if isCNMarket(req.Market) {
+		if at := market.Default().CNLiveUpdatedAt(); !at.IsZero() {
+			dataTime = at.UTC().Format(time.RFC3339)
+			stale, staleReason = marketQuoteFreshness("live", at, time.Now())
+			if stale {
+				metaOut = meta + "+stale-live@" + at.UTC().Format(time.RFC3339)
+			} else {
+				metaOut = meta + "+live@" + at.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+	if liveTimedOut {
+		metaOut = meta + "+stale-live-timeout"
+		dataTime = dataTimeOrEmpty(market.Default().SnapshotUpdatedAt())
+		stale = true
+		staleReason = "live quote provider timed out; serving last real snapshot"
+	}
+	if stale && staleReason == "" {
+		staleReason = "live quotes unavailable; serving last real snapshot"
+	}
+	setDataFreshness(c, dataFreshnessMeta{
+		Source:      metaOut,
+		DataTime:    dataTime,
+		Stale:       stale,
+		StaleReason: staleReason,
+		Refreshable: true,
+	})
 	c.JSON(http.StatusOK, models.StocksListResponse{
-		Stocks:  stocks[start:end],
+		Stocks:  page,
 		Total:   total,
 		Page:    req.Page,
 		Limit:   req.Limit,
@@ -114,12 +180,13 @@ func (h *Handler) SearchStocks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter 'q' is required"})
 		return
 	}
-	market := strings.TrimSpace(c.Query("market"))
-	if market == "" {
-		market = "us"
+	marketCode, err := normalizeStocksMarket(c.Query("market"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	stocks, meta, err := loadUniverseStocks(market)
+	stocks, meta, err := loadUniverseStocks(marketCode)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -154,7 +221,13 @@ func (h *Handler) SearchStocks(c *gin.Context) {
 		filtered = filtered[:limit]
 	}
 
-	c.Header("X-Data-Source", meta)
+	setDataFreshness(c, dataFreshnessMeta{
+		Source:      meta,
+		DataTime:    dataTimeFromSource(meta),
+		Stale:       true,
+		StaleReason: "search uses last real universe snapshot",
+		Refreshable: true,
+	})
 	c.JSON(http.StatusOK, models.StockSearchResponse{
 		Results: filtered,
 		Count:   len(filtered),
@@ -207,11 +280,97 @@ func sortStocks(stocks []models.Stock, sortBy, order string) []models.Stock {
 	return sorted
 }
 
-func loadUniverseStocks(market string) ([]models.Stock, string, error) {
-	if isCNMarket(market) {
+func enrichStocksLiveQuotes(stocks []models.Stock) []models.Stock {
+	out, _ := enrichStocksLiveQuotesStatus(stocks)
+	return out
+}
+
+func enrichStocksCachedQuotes(stocks []models.Stock) ([]models.Stock, quoteFetchResult) {
+	if len(stocks) == 0 {
+		return stocks, quoteFetchResult{quotes: map[string]market.Quote{}, source: "stale-snapshot:us"}
+	}
+	symbols := make([]string, 0, len(stocks))
+	for _, stock := range stocks {
+		symbols = append(symbols, stock.Symbol)
+	}
+	provider := market.Default()
+	quotes := provider.CachedQuotes(symbols)
+	result := newQuoteFetchResult(provider, quotes, false, time.Now())
+	out := make([]models.Stock, len(stocks))
+	copy(out, stocks)
+	for index := range out {
+		quote, ok := quotes[out[index].Symbol]
+		if !ok || quote.Price <= 0 {
+			continue
+		}
+		if out[index].Price > 0 && out[index].MarketCap > 0 {
+			out[index].MarketCap *= quote.Price / out[index].Price
+		}
+		out[index].Price = quote.Price
+		out[index].ChangePercent = quote.Pct
+		out[index].Change = quote.Price * quote.Pct / 100
+	}
+	return out, result
+}
+
+func trustedQuoteCoverage(quotes map[string]market.Quote) int {
+	count := 0
+	for _, quote := range quotes {
+		if quote.Price <= 0 || isStaleQuoteSource(quote.Source) || strings.TrimSpace(quote.DataTime) == "" {
+			continue
+		}
+		if _, _, err := parseQuoteObservation(quote.DataTime, quote.TimeGranularity); err == nil {
+			count++
+		}
+	}
+	return count
+}
+
+func enrichStocksLiveQuotesStatus(stocks []models.Stock) ([]models.Stock, bool) {
+	if len(stocks) == 0 {
+		return stocks, false
+	}
+	syms := make([]string, 0, len(stocks))
+	for _, s := range stocks {
+		syms = append(syms, s.Symbol)
+	}
+	live, timedOut := boundedQuotes(syms)
+	if len(live) == 0 {
+		return stocks, timedOut
+	}
+	out := make([]models.Stock, len(stocks))
+	copy(out, stocks)
+	for i := range out {
+		q, ok := live[out[i].Symbol]
+		if !ok || q.Price <= 0 {
+			continue
+		}
+		if out[i].Price > 0 && out[i].MarketCap > 0 {
+			out[i].MarketCap = out[i].MarketCap * (q.Price / out[i].Price)
+		}
+		out[i].Price = q.Price
+		out[i].ChangePercent = q.Pct
+		out[i].Change = q.Price * q.Pct / 100
+	}
+	return out, timedOut
+}
+
+func loadUniverseStocks(marketCode string) ([]models.Stock, string, error) {
+	if isCNMarket(marketCode) {
 		return loadCNUniverseStocks()
 	}
 	return loadUSUniverseStocks()
+}
+
+func normalizeStocksMarket(market string) (string, error) {
+	m := strings.ToLower(strings.TrimSpace(market))
+	if m == "" || m == "us" {
+		return "us", nil
+	}
+	if m == "cn" || m == "a" {
+		return "cn", nil
+	}
+	return "", fmt.Errorf("unsupported market %q; supported values: us, cn", market)
 }
 
 func isCNMarket(market string) bool {

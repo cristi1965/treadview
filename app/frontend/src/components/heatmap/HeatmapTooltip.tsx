@@ -2,6 +2,7 @@ import React from 'react';
 import { HeatmapNodeWithPosition } from '../../types/heatmap';
 import { formatPrice, formatPercent } from '../../utils/format';
 import { formatMarketCapShort } from '../../utils/heatmap';
+import { useI18n } from '../../i18n';
 
 interface HeatmapTooltipProps {
   node: HeatmapNodeWithPosition | null;
@@ -16,6 +17,7 @@ export const HeatmapTooltip: React.FC<HeatmapTooltipProps> = ({
   y,
   visible,
 }) => {
+  const { t } = useI18n();
   if (!visible || !node) return null;
 
   // Position tooltip to avoid going off-screen
@@ -63,28 +65,28 @@ export const HeatmapTooltip: React.FC<HeatmapTooltipProps> = ({
         {/* Metrics */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs text-faint">Price</span>
+            <span className="text-xs text-faint">{t('tt.price')}</span>
             <span className="text-sm font-mono text-ink">
               {formatPrice(node.price)}
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-xs text-faint">Market Cap</span>
+            <span className="text-xs text-faint">{t('tt.mcap')}</span>
             <span className="text-sm font-mono text-ink">
               {formatMarketCapShort(node.marketCap)}
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-xs text-faint">Sector</span>
+            <span className="text-xs text-faint">{t('tt.sector')}</span>
             <span className="text-sm text-muted truncate max-w-[160px]">
               {node.sector}
             </span>
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-xs text-faint">Avg Score</span>
+            <span className="text-xs text-faint">{t('stock.avg')}</span>
             <span className="text-sm font-mono text-ink">
               {node.avgScore.toFixed(1)}
             </span>
@@ -94,7 +96,7 @@ export const HeatmapTooltip: React.FC<HeatmapTooltipProps> = ({
         {/* Footer hint */}
         <div className="mt-3 pt-3 border-t border-line">
           <p className="text-xs text-faint text-center">
-            Click to view details
+            {t('tt.click')}
           </p>
         </div>
       </div>

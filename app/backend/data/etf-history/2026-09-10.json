@@ -1,0 +1,379 @@
+{
+  "updated": "2026-09-10",
+  "aumUnit": "usd",
+  "n": 24,
+  "supers": {
+    "债券": 1,
+    "商品": 1,
+    "因子策略": 5,
+    "宽基": 16,
+    "行业": 1
+  },
+  "sectors": [
+    {
+      "sector": "美股宽基",
+      "super": "宽基",
+      "n": 8,
+      "aum": 4022892179000
+    },
+    {
+      "sector": "国际/全球",
+      "super": "宽基",
+      "n": 3,
+      "aum": 565684336000
+    },
+    {
+      "sector": "小盘/中盘",
+      "super": "宽基",
+      "n": 3,
+      "aum": 309821952000
+    },
+    {
+      "sector": "新兴市场",
+      "super": "宽基",
+      "n": 2,
+      "aum": 287597504000
+    },
+    {
+      "sector": "红利",
+      "super": "因子策略",
+      "n": 2,
+      "aum": 201949152000
+    },
+    {
+      "sector": "价值",
+      "super": "因子策略",
+      "n": 1,
+      "aum": 182110374000
+    },
+    {
+      "sector": "黄金",
+      "super": "商品",
+      "n": 1,
+      "aum": 144225229000
+    },
+    {
+      "sector": "成长",
+      "super": "因子策略",
+      "n": 1,
+      "aum": 129881587000
+    },
+    {
+      "sector": "科技",
+      "super": "行业",
+      "n": 1,
+      "aum": 124329779000
+    },
+    {
+      "sector": "等权",
+      "super": "因子策略",
+      "n": 1,
+      "aum": 91838560000
+    },
+    {
+      "sector": "美国国债",
+      "super": "债券",
+      "n": 1,
+      "aum": 84983034000
+    }
+  ],
+  "etfs": [
+    {
+      "sym": "VOO",
+      "name": "Vanguard S&P 500 ETF",
+      "aum": 948673792000,
+      "expense": 0.03,
+      "ret1y": 16.17,
+      "ret5y": 70.09,
+      "mdd": -25.41,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "IVV",
+      "name": "iShares Core S&P 500 ETF",
+      "aum": 835199488000,
+      "expense": 0.03,
+      "ret1y": 16.18,
+      "ret5y": 70.16,
+      "mdd": -25.4,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "SPY",
+      "name": "State Street SPDR S&P 500 ETF Trust Unit",
+      "aum": 773006336000,
+      "expense": 0.09,
+      "ret1y": 16.19,
+      "ret5y": 70.13,
+      "mdd": -25.36,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "VTI",
+      "name": "Vanguard Total Stock Market ETF",
+      "aum": 650888128000,
+      "expense": 0.03,
+      "ret1y": 15.99,
+      "ret5y": 62.22,
+      "mdd": -26.2,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "QQQ",
+      "name": "Invesco QQQ Trust Series 1",
+      "aum": 485720384000,
+      "expense": 0.2,
+      "ret1y": 22.04,
+      "ret5y": 88.19,
+      "mdd": -35.62,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "宽基 · 费率适中"
+    },
+    {
+      "sym": "VEA",
+      "name": "Vanguard FTSE Developed Markets ETF",
+      "aum": 232173552000,
+      "expense": 0.05,
+      "ret1y": 21.06,
+      "ret5y": 36.47,
+      "mdd": -31.85,
+      "sector": "国际/全球",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "IEFA",
+      "name": "iShares Core MSCI EAFE ETF",
+      "aum": 182690931000,
+      "expense": 0.07,
+      "ret1y": 13.98,
+      "ret5y": 27.37,
+      "mdd": -32.85,
+      "sector": "国际/全球",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "VTV",
+      "name": "Vanguard Value ETF",
+      "aum": 182110374000,
+      "expense": 0.04,
+      "ret1y": 20.97,
+      "ret5y": 60.2,
+      "mdd": -18.12,
+      "sector": "价值",
+      "kind": "因子策略",
+      "verdict": "因子 / 策略"
+    },
+    {
+      "sym": "IEMG",
+      "name": "iShares Core MSCI Emerging Markets ETF",
+      "aum": 163839821000,
+      "expense": 0.09,
+      "ret1y": 27.43,
+      "ret5y": 27.09,
+      "mdd": -34.91,
+      "sector": "新兴市场",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "VXUS",
+      "name": "Vanguard Total International Stock ETF",
+      "aum": 150819853000,
+      "expense": 0.07,
+      "ret1y": 18.99,
+      "ret5y": 30.49,
+      "mdd": -31.71,
+      "sector": "国际/全球",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "GLD",
+      "name": "SPDR Gold Shares",
+      "aum": 144225229000,
+      "expense": 0.4,
+      "ret1y": 18.22,
+      "ret5y": 137.09,
+      "mdd": -26.4,
+      "sector": "黄金",
+      "kind": "商品",
+      "verdict": "商品 · 配置"
+    },
+    {
+      "sym": "SPYM",
+      "name": "State Street SPDR Portfolio S&P 500 ETF",
+      "aum": 144091635000,
+      "expense": 0.02,
+      "ret1y": 16.23,
+      "ret5y": 70.28,
+      "mdd": -25.38,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "IWF",
+      "name": "iShares Russell 1000 Growth ETF",
+      "aum": 129881587000,
+      "expense": 0.18,
+      "ret1y": 6.37,
+      "ret5y": 68.34,
+      "mdd": -33.11,
+      "sector": "成长",
+      "kind": "因子策略",
+      "verdict": "因子 / 策略"
+    },
+    {
+      "sym": "XLK",
+      "name": "State Street Technology Select Sector SPDR ETF",
+      "aum": 124329779000,
+      "expense": 0.1,
+      "ret1y": 37.12,
+      "ret5y": 136.51,
+      "mdd": -34.02,
+      "sector": "科技",
+      "kind": "行业",
+      "verdict": "行业 / 主题"
+    },
+    {
+      "sym": "VWO",
+      "name": "Vanguard FTSE Emerging Markets ETF",
+      "aum": 123757683000,
+      "expense": 0.08,
+      "ret1y": 13.27,
+      "ret5y": 14.11,
+      "mdd": -32.98,
+      "sector": "新兴市场",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "IJH",
+      "name": "iShares Core S&P Mid-Cap ETF",
+      "aum": 120938278000,
+      "expense": 0.05,
+      "ret1y": 12.9,
+      "ret5y": 37.54,
+      "mdd": -24.62,
+      "sector": "小盘/中盘",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "VIG",
+      "name": "Vanguard Div Appreciation ETF",
+      "aum": 109322368000,
+      "expense": 0.06,
+      "ret1y": 10.76,
+      "ret5y": 48.41,
+      "mdd": -21.51,
+      "sector": "红利",
+      "kind": "因子策略",
+      "verdict": "因子 / 策略"
+    },
+    {
+      "sym": "IJR",
+      "name": "iShares Core S&P Small-Cap ETF",
+      "aum": 107062144000,
+      "expense": 0.06,
+      "ret1y": 20.25,
+      "ret5y": 29.41,
+      "mdd": -28.91,
+      "sector": "小盘/中盘",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "ITOT",
+      "name": "iShares Core S&P Total U.S. Stock Market ETF",
+      "aum": 93385293000,
+      "expense": 0.03,
+      "ret1y": 15.98,
+      "ret5y": 62.47,
+      "mdd": -26.19,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "低费率宽基"
+    },
+    {
+      "sym": "SCHD",
+      "name": "Schwab US Dividend Equity ETF",
+      "aum": 92626784000,
+      "expense": 0.06,
+      "ret1y": 23.6,
+      "ret5y": 34.12,
+      "mdd": -18.93,
+      "sector": "红利",
+      "kind": "因子策略",
+      "verdict": "因子 / 策略"
+    },
+    {
+      "sym": "QQQM",
+      "name": "Invesco NASDAQ 100 ETF",
+      "aum": 91927123000,
+      "expense": 0.15,
+      "ret1y": 22.06,
+      "ret5y": 88.5,
+      "mdd": -35.57,
+      "sector": "美股宽基",
+      "kind": "宽基",
+      "verdict": "宽基 · 费率适中"
+    },
+    {
+      "sym": "RSP",
+      "name": "Invesco S&P 500 Equal Weight ETF",
+      "aum": 91838560000,
+      "expense": 0.2,
+      "ret1y": 13.68,
+      "ret5y": 38.41,
+      "mdd": -22.48,
+      "sector": "等权",
+      "kind": "因子策略",
+      "verdict": "因子 / 策略"
+    },
+    {
+      "sym": "SGOV",
+      "name": "iShares 0-3 Month Treasury Bond ETF",
+      "aum": 84983034000,
+      "expense": 0.05,
+      "ret1y": 0.02,
+      "ret5y": 0.47,
+      "mdd": -0.68,
+      "sector": "美国国债",
+      "kind": "债券",
+      "verdict": "债券 · 配置"
+    },
+    {
+      "sym": "IWM",
+      "name": "iShares Russell 2000 ETF",
+      "aum": 81821530000,
+      "expense": 0.19,
+      "ret1y": 21.69,
+      "ret5y": 29.82,
+      "mdd": -33.13,
+      "sector": "小盘/中盘",
+      "kind": "宽基",
+      "verdict": "宽基 · 费率适中"
+    }
+  ],
+  "source": "yahoo-chart+local-etf-metadata",
+  "sourceURL": "https://query1.finance.yahoo.com/v8/finance/chart/",
+  "metadataAsOf": "2026-09-11",
+  "scope": {
+    "complete": true,
+    "completed": 24,
+    "kind": "top-aum",
+    "requested": 24
+  }
+}

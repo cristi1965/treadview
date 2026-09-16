@@ -1,6 +1,7 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { TrendingUp, FileText, Heart, Newspaper, HelpCircle, UserCheck, ShieldAlert, Award } from 'lucide-react'
+import { I18nKey, useI18n } from '../i18n'
 
 interface NodeProps {
   id: string
@@ -11,16 +12,16 @@ interface NodeProps {
   description: string
 }
 
-const flowNodes: NodeProps[] = [
-  { id: 'Market Analyst', label: 'Technical Analyst', icon: <TrendingUp size={20} />, isActive: false, isCompleted: false, description: 'OHLCV chart & indicator analysis' },
-  { id: 'Fundamentals Analyst', label: 'Fundamentals Analyst', icon: <FileText size={20} />, isActive: false, isCompleted: false, description: 'Balance sheet, margins & growth' },
-  { id: 'Sentiment Analyst', label: 'Sentiment Analyst', icon: <Heart size={20} />, isActive: false, isCompleted: false, description: 'Social & public opinion assessment' },
-  { id: 'News Analyst', label: 'News Analyst', icon: <Newspaper size={20} />, isActive: false, isCompleted: false, description: 'Insider trading, macro & world events' },
-  { id: 'Debate', label: 'Bull & Bear Debate', icon: <HelpCircle size={20} />, isActive: false, isCompleted: false, description: 'Thesis debate between researchers' },
-  { id: 'Research Manager', label: 'Research Manager', icon: <UserCheck size={20} />, isActive: false, isCompleted: false, description: 'Evaluates debate & issues investment plan' },
-  { id: 'Trader', label: 'Trader Desk', icon: <TrendingUp size={20} />, isActive: false, isCompleted: false, description: 'Translates plan to transaction proposals' },
-  { id: 'Risk', label: 'Risk Debate', icon: <ShieldAlert size={20} />, isActive: false, isCompleted: false, description: 'Risk parameters debate (Aggressive/Neutral/Con)' },
-  { id: 'Portfolio Manager', label: 'Portfolio Manager', icon: <Award size={20} />, isActive: false, isCompleted: false, description: 'Final decision, target price & horizon' }
+const flowNodes: Array<Omit<NodeProps, 'label' | 'description'> & { labelKey: I18nKey; descKey: I18nKey }> = [
+  { id: 'Market Analyst', labelKey: 'flow.tech', descKey: 'flow.techDesc', icon: <TrendingUp size={20} />, isActive: false, isCompleted: false },
+  { id: 'Fundamentals Analyst', labelKey: 'flow.fund', descKey: 'flow.fundDesc', icon: <FileText size={20} />, isActive: false, isCompleted: false },
+  { id: 'Sentiment Analyst', labelKey: 'flow.sent', descKey: 'flow.sentDesc', icon: <Heart size={20} />, isActive: false, isCompleted: false },
+  { id: 'News Analyst', labelKey: 'flow.news', descKey: 'flow.newsDesc', icon: <Newspaper size={20} />, isActive: false, isCompleted: false },
+  { id: 'Debate', labelKey: 'flow.debate', descKey: 'flow.debateDesc', icon: <HelpCircle size={20} />, isActive: false, isCompleted: false },
+  { id: 'Research Manager', labelKey: 'flow.rm', descKey: 'flow.rmDesc', icon: <UserCheck size={20} />, isActive: false, isCompleted: false },
+  { id: 'Trader', labelKey: 'flow.trader', descKey: 'flow.traderDesc', icon: <TrendingUp size={20} />, isActive: false, isCompleted: false },
+  { id: 'Risk', labelKey: 'flow.risk', descKey: 'flow.riskDesc', icon: <ShieldAlert size={20} />, isActive: false, isCompleted: false },
+  { id: 'Portfolio Manager', labelKey: 'flow.pm', descKey: 'flow.pmDesc', icon: <Award size={20} />, isActive: false, isCompleted: false },
 ]
 
 interface AgentFlowGraphProps {
@@ -29,7 +30,7 @@ interface AgentFlowGraphProps {
 }
 
 export const AgentFlowGraph: React.FC<AgentFlowGraphProps> = ({ currentNode, currentPhase }) => {
-  // Determine node states
+  const { t } = useI18n()
   const getNodeState = (nodeId: string) => {
     let isActive = false
     let isCompleted = false
@@ -129,10 +130,10 @@ export const AgentFlowGraph: React.FC<AgentFlowGraphProps> = ({ currentNode, cur
                   fontSize: '0.95rem',
                   color: isCompleted ? '#a7f3d0' : isActive ? 'white' : 'var(--text-primary)'
                 }}>
-                  {node.label}
+                  {t(node.labelKey)}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                  {node.description}
+                  {t(node.descKey)}
                 </div>
                 {isActive && (
                   <span style={{ 
@@ -143,7 +144,7 @@ export const AgentFlowGraph: React.FC<AgentFlowGraphProps> = ({ currentNode, cur
                     letterSpacing: '0.05em',
                     marginTop: '0.25rem'
                   }}>
-                    Analyzing...
+                    {t('flow.analyzing')}
                   </span>
                 )}
                 {isCompleted && (
@@ -155,7 +156,7 @@ export const AgentFlowGraph: React.FC<AgentFlowGraphProps> = ({ currentNode, cur
                     letterSpacing: '0.05em',
                     marginTop: '0.25rem'
                   }}>
-                    Completed
+                    {t('flow.completed')}
                   </span>
                 )}
               </div>

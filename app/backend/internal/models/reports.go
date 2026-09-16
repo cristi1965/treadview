@@ -43,16 +43,45 @@ type EarningsDetail struct {
 
 // MarketEvent represents a calendar event
 type MarketEvent struct {
-	ID              string            `json:"id"`
-	Date            string            `json:"date"`      // ISO date string
-	DayOfWeek       string            `json:"dayOfWeek"` // e.g., "周五"
-	IsToday         bool              `json:"isToday,omitempty"`
-	Type            MarketEventType   `json:"type"`
-	IsImportant     bool              `json:"isImportant,omitempty"` // 🔴 重磅
-	Title           string            `json:"title"`
-	Description     string            `json:"description,omitempty"`
-	RelatedTickers  []string          `json:"relatedTickers,omitempty"`
-	EarningsDetails []EarningsDetail  `json:"earnings,omitempty"`
+	ID              string           `json:"id"`
+	Date            string           `json:"date"`      // ISO date string
+	DayOfWeek       string           `json:"dayOfWeek"` // e.g., "周五"
+	IsToday         bool             `json:"isToday,omitempty"`
+	Type            MarketEventType  `json:"type"`
+	IsImportant     bool             `json:"isImportant,omitempty"` // 🔴 重磅
+	Title           string           `json:"title"`
+	Description     string           `json:"description,omitempty"`
+	RelatedTickers  []string         `json:"relatedTickers,omitempty"`
+	EarningsDetails []EarningsDetail `json:"earnings,omitempty"`
+
+	// Jin10-style economic calendar columns.
+	Time       string `json:"time,omitempty"`       // "08:30" in ET
+	Country    string `json:"country,omitempty"`    // US / CN / EU / JP / UK / DE
+	Importance int    `json:"importance,omitempty"` // 1..3 stars
+	Previous   string `json:"previous,omitempty"`   // 前值
+	Forecast   string `json:"forecast,omitempty"`   // 预期
+	Actual     string `json:"actual,omitempty"`     // 公布值; empty = 未公布
+}
+
+// FlashItem is one entry of the 7x24 newsflash feed.
+type FlashItem struct {
+	ID         string   `json:"id"`
+	Time       string   `json:"time"`             // RFC3339 UTC
+	Title      string   `json:"title"`            // 中文标题
+	TitleEn    string   `json:"titleEn,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	BodyEn     string   `json:"bodyEn,omitempty"`
+	Importance int      `json:"importance"`       // 1 普通 / 2 关注 / 3 重磅(红)
+	Kind       string   `json:"kind"`             // macro | earnings | company | market | calendar
+	Tickers    []string `json:"tickers,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	Link       string   `json:"link,omitempty"`
+}
+
+// FlashResponse is the response for the newsflash feed.
+type FlashResponse struct {
+	Items     []FlashItem `json:"items"`
+	UpdatedAt string      `json:"updatedAt"`
 }
 
 // ReportsListResponse is the response for listing reports

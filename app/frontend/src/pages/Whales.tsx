@@ -3,21 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { InstitutionCard } from '../components/InstitutionCard';
 import { StockGodShell } from '../components/layout/StockGodShell';
 import { CongressCard } from '../components/CongressCard';
-import type { CongressMember, Investor, PartyFilter, TabType, TradeTypeFilter } from '../types/whales';
-import { apiUrl } from '../utils/api';
-
-interface ConsensusStock {
-  symbol: string;
-  name: string;
-  guruCount: number;
-  avgWeight: number;
-  change: string;
-}
+import { DataStatus } from '../components/common';
+import type { PartyFilter, TabType, TradeTypeFilter } from '../types/whales';
+import { useWhalesStore, type ConsensusStock } from '../stores/whalesStore';
+import { useI18n } from '../i18n';
 
 type CategoryFilter = 'all' | 'us_gurus' | 'a_share_top' | 'private' | 'hot_money';
 type MiniListMode = 'add' | 'trim';
-
-const WHALES_API = '/api/whales';
 
 const categoryOptions: Array<{ label: string; value: CategoryFilter }> = [
   { label: '全部', value: 'all' },
@@ -38,11 +30,6 @@ const tradeOptions: Array<{ label: string; value: TradeTypeFilter }> = [
   { label: '买入', value: 'buy' },
   { label: '卖出', value: 'sell' },
 ];
-
-const changeNumber = (value: string) => {
-  const parsed = parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
 
 const StockBadge: React.FC<{ symbol: string }> = ({ symbol }) => (
   <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-line bg-surface-3 font-mono text-[7px] font-semibold text-accent">
@@ -74,9 +61,9 @@ const StatPill: React.FC<{ label: string; value: string | number }> = ({ label, 
 );
 
 const MainConsensusRow: React.FC<{ stock: ConsensusStock; index: number }> = ({ stock, index }) => {
-  const change = changeNumber(stock.change);
-  const changeText = change === 0 ? '·' : change > 0 ? `+${Math.round(change)}` : `${Math.round(change)}`;
-  const changeClass = change > 0 ? 'text-up' : change < 0 ? 'text-down' : 'text-faint';
+  const netChange = stock.addCount - stock.trimCount;
+  const changeText = netChange === 0 ? '·' : netChange > 0 ? `+${netChange}` : `${netChange}`;
+  const changeClass = netChange > 0 ? 'text-up' : netChange < 0 ? 'text-down' : 'text-faint';
 
   return (
     <a
@@ -99,7 +86,7 @@ const MainConsensusRow: React.FC<{ stock: ConsensusStock; index: number }> = ({ 
 };
 
 const MiniConsensusRow: React.FC<{ stock: ConsensusStock; mode: MiniListMode }> = ({ stock, mode }) => {
-  const delta = mode === 'add' ? Math.max(1, Math.round(stock.guruCount / 4)) : -Math.max(1, Math.round(stock.guruCount / 5));
+  const count = mode === 'add' ? stock.addCount : stock.trimCount;
 
   return (
     <a href={`/stock/${stock.symbol}?market=us`} className="group flex h-[26px] items-center gap-2 rounded-md px-1.5 py-1 transition hover:bg-surface-2">
@@ -112,71 +99,51 @@ const MiniConsensusRow: React.FC<{ stock: ConsensusStock; mode: MiniListMode }> 
       </div>
       <span className="shrink-0 font-mono text-[11px] text-faint">{stock.guruCount}持</span>
       <span className={`shrink-0 font-mono text-[11px] tabular-nums ${mode === 'add' ? 'text-up' : 'text-down'}`}>
-        {delta > 0 ? '+' : ''}
-        {delta} 位
+        {mode === 'add' ? '+' : '-'}
+        {count} 位
       </span>
     </a>
   );
 };
 
 export const Whales: React.FC = () => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('institutions');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [partyFilter, setPartyFilter] = useState<PartyFilter>('all');
   const [tradeTypeFilter, setTradeTypeFilter] = useState<TradeTypeFilter>('all');
-  const [investors, setInvestors] = useState<Investor[]>([]);
-  const [congressMembers, setCongressMembers] = useState<CongressMember[]>([]);
-  const [consensusStocks, setConsensusStocks] = useState<ConsensusStock[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    pageInvestors: investors,
+    pageCongressMembers: congressMembers,
+    pageConsensusStocks: consensusStocks,
+    investorsLoading,
+    investorsError,
+    investorsMeta,
+    consensusLoading,
+    consensusError,
+    consensusMeta,
+    congressLoading,
+    congressError,
+    congressMeta,
+    fetchPageInvestors,
+    fetchPageConsensus,
+    fetchPageCongress,
+  } = useWhalesStore();
 
   useEffect(() => {
     if (activeTab !== 'institutions') return;
 
-    const load = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (categoryFilter !== 'all') params.append('type', categoryFilter);
-        const query = params.toString();
-        const [gurusResponse, consensusResponse] = await Promise.all([
-          fetch(apiUrl(`${WHALES_API}/gurus${query ? `?${query}` : ''}`)),
-          fetch(apiUrl(`${WHALES_API}/consensus`)),
-        ]);
-
-        if (gurusResponse.ok) setInvestors((await gurusResponse.json()) || []);
-        if (consensusResponse.ok) setConsensusStocks((await consensusResponse.json()) || []);
-      } catch (error) {
-        console.error('Failed to load whales page data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [activeTab, categoryFilter]);
+    void fetchPageInvestors(categoryFilter);
+    void fetchPageConsensus(categoryFilter);
+  }, [activeTab, categoryFilter, fetchPageInvestors, fetchPageConsensus]);
 
   useEffect(() => {
     if (activeTab !== 'congress') return;
 
-    const load = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (partyFilter !== 'all') params.append('party', partyFilter);
-        if (tradeTypeFilter !== 'all') params.append('type', tradeTypeFilter);
-        const response = await fetch(apiUrl(`${WHALES_API}/congress${params.toString() ? `?${params.toString()}` : ''}`));
-        if (response.ok) setCongressMembers((await response.json()) || []);
-      } catch (error) {
-        console.error('Failed to load congress data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [activeTab, partyFilter, tradeTypeFilter]);
+    void fetchPageCongress(partyFilter, tradeTypeFilter);
+  }, [activeTab, partyFilter, tradeTypeFilter, fetchPageCongress]);
 
   const filteredInvestors = useMemo(() => {
     if (!searchQuery) return investors;
@@ -198,6 +165,15 @@ export const Whales: React.FC = () => {
     );
   }, [congressMembers, searchQuery]);
 
+  const verifiedCongressMembers = useMemo(
+    () => filteredCongressMembers.filter((member) => member.latestTrade?.verified),
+    [filteredCongressMembers]
+  );
+  const unverifiedCongressMembers = useMemo(
+    () => filteredCongressMembers.filter((member) => !member.latestTrade?.verified),
+    [filteredCongressMembers]
+  );
+
   const searchedConsensus = useMemo(() => {
     if (!searchQuery) return consensusStocks;
     const query = searchQuery.toLowerCase();
@@ -209,11 +185,11 @@ export const Whales: React.FC = () => {
     [searchedConsensus]
   );
   const mostAdded = useMemo(
-    () => [...searchedConsensus].sort((a, b) => changeNumber(b.change) - changeNumber(a.change) || b.guruCount - a.guruCount).slice(0, 20),
+    () => [...searchedConsensus].filter((stock) => stock.addCount > 0).sort((a, b) => b.addCount - a.addCount || b.guruCount - a.guruCount).slice(0, 20),
     [searchedConsensus]
   );
   const mostTrimmed = useMemo(
-    () => [...searchedConsensus].sort((a, b) => changeNumber(a.change) - changeNumber(b.change) || b.guruCount - a.guruCount).slice(0, 20),
+    () => [...searchedConsensus].filter((stock) => stock.trimCount > 0).sort((a, b) => b.trimCount - a.trimCount || b.guruCount - a.guruCount).slice(0, 20),
     [searchedConsensus]
   );
 
@@ -221,26 +197,37 @@ export const Whales: React.FC = () => {
   const stockMarket = denseMode ? 'cn' : 'us';
 
   const consensusWithThree = consensusStocks.filter((stock) => stock.guruCount >= 3).length;
-  const netAdds = consensusStocks.filter((stock) => changeNumber(stock.change) > 0).length;
-  const netTrims = consensusStocks.filter((stock) => changeNumber(stock.change) < 0).length;
+  const netAdds = consensusStocks.filter((stock) => stock.addCount > stock.trimCount).length;
+  const netTrims = consensusStocks.filter((stock) => stock.trimCount > stock.addCount).length;
+  const reportPeriod = consensusStocks[0]?.reportPeriod || '';
+  const consensusInvestorCount = reportPeriod ? investors.filter(
+    (investor) => investor.type === 'superinvestor' && investor.reportPeriod === reportPeriod
+  ).length : 0;
+  const consensusReason = consensusMeta?.staleReason || '';
+  const consensusSource = consensusMeta?.source || '';
+  const consensusReasonText = consensusReason.includes('no shared disclosure report period') || consensusReason.includes('missing disclosure report period')
+    ? '缺少同一报告期的可核对披露，暂不计算共识'
+    : consensusReason.includes('source evidence')
+      ? '同报告期的来源证据缺失或不一致，暂不计算共识'
+      : consensusReason;
 
   return (
-    <StockGodShell title="聪明钱" searchQuery={searchQuery} onSearchChange={setSearchQuery}>
+    <StockGodShell title={t('whales.title')} searchQuery={searchQuery} onSearchChange={setSearchQuery}>
       <div className="space-y-7">
               <div>
-                <h1 className="text-[22px] font-semibold tracking-tight text-ink">聪明钱</h1>
+                <h1 className="text-[22px] font-semibold tracking-tight text-ink">{t('whales.title')}</h1>
                 <p className="mt-1.5 text-sm text-muted">
-                  关注仓位占比与季度变动 —— 重仓、建仓与减持代表不同含义,而非仅看是否持有。
+                  关注仓位占比与披露期变动，重仓、建仓与减持代表不同含义，而非仅看是否持有。
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
                   <FilterButton active={activeTab === 'institutions'} onClick={() => setActiveTab('institutions')} inTab>
-                    机构 13F
+                    机构披露
                   </FilterButton>
                   <FilterButton active={activeTab === 'congress'} onClick={() => setActiveTab('congress')} inTab>
-                    国会 · {congressMembers.length || 96}
+					国会 · {verifiedCongressMembers.length}
                   </FilterButton>
                 </div>
 
@@ -282,9 +269,28 @@ export const Whales: React.FC = () => {
                 )}
               </div>
 
-              {loading && <div className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-muted">加载中...</div>}
+              {activeTab === 'institutions' && (
+                <DataStatus
+                  state={investorsError ? 'error' : investorsLoading ? 'loading' : investorsMeta?.stale ? 'stale' : investorsMeta ? 'live' : 'unavailable'}
+                  label={!investorsError && !investorsLoading && investorsMeta && !investorsMeta.stale ? '机构披露快照' : undefined}
+                  dataTime={investorsMeta?.dataTime}
+                  source={investorsMeta?.source}
+                  message={investorsError || investorsMeta?.staleReason}
+                  onRetry={() => void fetchPageInvestors(categoryFilter)}
+                />
+              )}
+              {activeTab === 'congress' && (
+                <DataStatus
+                  state={congressError ? 'error' : congressLoading ? 'loading' : congressMeta?.stale ? 'stale' : congressMeta ? 'live' : 'unavailable'}
+                  label={!congressError && !congressLoading && congressMeta && !congressMeta.stale ? '国会披露快照' : undefined}
+                  dataTime={congressMeta?.dataTime}
+                  source={congressMeta?.source}
+                  message={congressError || congressMeta?.staleReason}
+                  onRetry={() => void fetchPageCongress(partyFilter, tradeTypeFilter)}
+                />
+              )}
 
-              {activeTab === 'institutions' && !loading && (
+              {activeTab === 'institutions' && !investorsLoading && !investorsError && (
                 <>
                   {!denseMode && (
                     <section>
@@ -309,30 +315,44 @@ export const Whales: React.FC = () => {
                         <div>
                           <h2 className="text-[15px] font-semibold text-ink">聪明钱共识</h2>
                           <p className="mt-1 text-[12px] text-muted">
-                            {investors.length || 81} 位价投大佬交叉持仓 · 20 May 2026 · 13F
+                            {consensusInvestorCount} 位申报主体交叉持仓 · 报告期 {reportPeriod || '未知'} · 来源 {consensusSource || '未知'}
                           </p>
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <StatPill label="价投大佬" value={investors.length || 81} />
-                        <StatPill label="≥3 人共识" value={consensusWithThree || 232} />
-                        <StatPill label="本季净加码" value={netAdds || 396} />
-                        <StatPill label="本季净减持" value={netTrims || 391} />
+                      <div className="mt-3">
+                        <DataStatus
+                          state={consensusError ? 'error' : consensusLoading ? 'loading' : consensusMeta?.stale ? 'stale' : consensusMeta ? 'live' : 'unavailable'}
+                          label={!consensusError && !consensusLoading && consensusMeta && !consensusMeta.stale ? '共识快照' : undefined}
+                          dataTime={consensusMeta?.dataTime}
+                          source={consensusMeta?.source}
+                          message={consensusError || consensusMeta?.staleReason}
+                          onRetry={() => void fetchPageConsensus(categoryFilter)}
+                          compact
+                        />
                       </div>
 
-                      <h3 className="mb-1.5 mt-5 text-[12px] font-medium uppercase tracking-wider text-faint">最多大佬共同持有</h3>
+                      {!consensusLoading && !consensusError && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <StatPill label="价投大佬" value={consensusInvestorCount} />
+                        <StatPill label="≥3 人共识" value={consensusWithThree} />
+                        <StatPill label="本期净加码" value={netAdds} />
+                        <StatPill label="本期净减持" value={netTrims} />
+                      </div>}
+
+                      {!consensusLoading && !consensusError && <><h3 className="mb-1.5 mt-5 text-[12px] font-medium uppercase tracking-wider text-faint">最多大佬共同持有</h3>
                       <div>
                         {topHeld.length > 0 ? (
                           topHeld.map((stock, index) => <MainConsensusRow key={`${stock.symbol}-${stock.name}-${index}`} stock={stock} index={index} />)
                         ) : (
-                          <div className="py-8 text-center text-[12px] text-faint">暂无共识数据</div>
+                          <div className="py-8 text-center text-[12px] text-faint">
+                            暂无共识数据{consensusReasonText ? `：${consensusReasonText}` : ''}
+                          </div>
                         )}
-                      </div>
+                      </div></>}
 
                       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
                         <div>
-                          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wider text-faint">本季加码最集中</h3>
+                          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wider text-faint">本期加码最集中</h3>
                           <div>
                             {mostAdded.map((stock) => (
                               <MiniConsensusRow key={`add-${stock.symbol}-${stock.name}`} stock={stock} mode="add" />
@@ -340,7 +360,7 @@ export const Whales: React.FC = () => {
                           </div>
                         </div>
                         <div>
-                          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wider text-faint">本季减持最集中</h3>
+                          <h3 className="mb-1.5 text-[12px] font-medium uppercase tracking-wider text-faint">本期减持最集中</h3>
                           <div>
                             {mostTrimmed.map((stock) => (
                               <MiniConsensusRow key={`trim-${stock.symbol}-${stock.name}`} stock={stock} mode="trim" />
@@ -382,8 +402,15 @@ export const Whales: React.FC = () => {
                               <div className="min-w-0">
                                 <div className="truncate text-[14px] font-semibold text-ink hover:text-accent">{investor.name}</div>
                                 <div className="truncate text-[11px] text-faint">{investor.company || investor.nameEn}</div>
+                                {investor.type === 'superinvestor' && (
+                                  <div className={`mt-1 text-[10px] ${investor.stale ? 'text-down' : 'text-faint'}`}>
+                                    {investor.reportPeriod ? `报告期 ${investor.reportPeriod} · 申报日 ${investor.filingDate || '未知'}` : `来源日期 ${investor.sourceAsOf || '未提供'}`} · 来源 {investor.source || '未知'}
+                                    <br />
+                                    {investor.reportPeriod ? `同步 ${investor.syncedAt || '未知'} · Accession ${investor.accession || '未知'}` : '非 SEC 原始申报，不展示 Accession'}
+                                  </div>
+                                )}
                               </div>
-                              <div className="shrink-0 text-right text-[11px] text-muted">{investor.holdings || rows.length} 仓</div>
+                              <div className="shrink-0 text-right text-[11px] text-muted">{investor.holdings} 仓</div>
                             </button>
                             <div className="space-y-1.5">
                               {rows.map((row) => (
@@ -422,9 +449,15 @@ export const Whales: React.FC = () => {
                 </>
               )}
 
-              {activeTab === 'congress' && !loading && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {filteredCongressMembers.map((member) => (
+              {activeTab === 'congress' && !congressLoading && !congressError && (
+                <div className="space-y-8">
+                  <section>
+                    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <h2 className="text-[15px] font-semibold text-ink">可核验国会披露榜单</h2>
+                      <span className="text-[11px] text-faint">{verifiedCongressMembers.length} 位 · 仅计入来源、申报日、原文与文件标识完整的记录</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {verifiedCongressMembers.map((member) => (
                     <CongressCard
                       key={member.id}
                       member={member}
@@ -437,7 +470,29 @@ export const Whales: React.FC = () => {
                       }}
                     />
                   ))}
-                  {filteredCongressMembers.length === 0 && <div className="col-span-full py-12 text-center text-muted">未找到匹配的国会议员</div>}
+                  {verifiedCongressMembers.length === 0 && <div className="col-span-full py-12 text-center text-muted">当前筛选无可核验国会披露</div>}
+                    </div>
+                  </section>
+                  {unverifiedCongressMembers.length > 0 && (
+                    <section className="rounded-xl border border-amber-500/35 bg-amber-500/5 p-4">
+                      <h2 className="text-[15px] font-semibold text-amber-200">未核验历史样本</h2>
+                      <p className="mt-1 text-[12px] leading-relaxed text-amber-100/70">
+                        这些旧 bootstrap 记录缺少可定位原文或申报标识，不进入榜单计数，也不作为投资信号。
+                      </p>
+                      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 opacity-75">
+                        {unverifiedCongressMembers.map((member) => (
+                          <CongressCard
+                            key={`unverified-${member.id}`}
+                            member={member}
+                            onClick={() => {
+                              const slug = member.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                              navigate(`/whales/congress/${slug || member.id}`);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
                 </div>
               )}
       </div>

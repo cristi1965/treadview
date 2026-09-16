@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"trading-agents/internal/models"
+
+	"gorm.io/gorm"
 )
 
 // RunNonEDGARWhalesRefresh refreshes CN fund / hot_money / private_fund / politician
@@ -48,6 +50,7 @@ func RunNonEDGARWhalesRefresh() {
 }
 
 func refreshGuruFromRaw(rawInv RawInvestor) bool {
+	source := bootstrapSource(rawInv)
 	topStock := "—"
 	topStockWeight := 0.0
 	for _, h := range rawInv.Holdings {
@@ -59,6 +62,33 @@ func refreshGuruFromRaw(rawInv RawInvestor) bool {
 			topStockWeight = w
 			topStock = h.Ticker
 		}
+	}
+
+	holdings := make([]models.Holding, 0, len(rawInv.Holdings))
+	for _, h := range rawInv.Holdings {
+		symbol := strings.TrimSpace(h.Ticker)
+		if symbol == "" {
+			continue
+		}
+		weight := 0.0
+		if h.PctOfPortfolio != nil {
+			weight = *h.PctOfPortfolio
+		}
+		change := "Hold"
+		switch h.ChangeType {
+		case "add":
+			change = "+ 加仓"
+		case "trim":
+			change = "- 减持"
+		case "new":
+			change = "New 新进"
+		}
+		holdings = append(holdings, models.Holding{
+			StockSymbol: symbol, StockName: h.StockName, Value: "—", Shares: "—", Change: change, Weight: weight,
+		})
+	}
+	if len(holdings) == 0 {
+		return false
 	}
 
 	var guru models.Guru
@@ -79,52 +109,50 @@ func refreshGuruFromRaw(rawInv RawInvestor) bool {
 			Title:          "Investor",
 			FundName:       rawInv.Entity,
 			AUM:            rawInv.Entity,
-			PositionCount:  len(rawInv.Holdings),
+			PositionCount:  len(holdings),
 			TopStock:       topStock,
 			TopStockWeight: topStockWeight,
 			AvatarCode:     strings.ToUpper(avatar),
 			Type:           rawInv.Type,
-		}
-		if err := DB.Create(&guru).Error; err != nil {
-			return false
+			Source:         source,
+			SourceAsOf:     strings.TrimSpace(rawInv.LatestPeriod),
+			SourceURL:      bootstrapSourceURL(source),
 		}
 	} else {
-		guru.PositionCount = len(rawInv.Holdings)
+		guru.PositionCount = len(holdings)
 		guru.TopStock = topStock
 		guru.TopStockWeight = topStockWeight
 		if rawInv.Entity != "" {
 			guru.FundName = rawInv.Entity
 		}
 		guru.Type = rawInv.Type
-		DB.Save(&guru)
+		guru.Source = source
+		guru.SourceAsOf = strings.TrimSpace(rawInv.LatestPeriod)
+		guru.SourceURL = bootstrapSourceURL(source)
 	}
-
-	DB.Where("guru_id = ?", guru.ID).Delete(&models.Holding{})
-	for _, h := range rawInv.Holdings {
-		weight := 0.0
-		if h.PctOfPortfolio != nil {
-			weight = *h.PctOfPortfolio
-		}
-		change := "Hold"
-		switch h.ChangeType {
-		case "add":
-			change = "+ 加仓"
-		case "trim":
-			change = "- 减持"
-		case "new":
-			change = "New 新进"
-		}
-		DB.Create(&models.Holding{
-			GuruID:      guru.ID,
-			StockSymbol: h.Ticker,
-			StockName:   h.StockName,
-			Value:       "—",
-			Shares:      "—",
-			Change:      change,
-			Weight:      weight,
-		})
+	if err := replaceGuruHoldings(DB, &guru, holdings); err != nil {
+		log.Printf("[CN-Whales] atomic replacement failed for %s: %v", rawInv.Slug, err)
+		return false
 	}
 	return true
+}
+
+func replaceGuruHoldings(db *gorm.DB, guru *models.Guru, holdings []models.Holding) error {
+	if guru == nil || strings.TrimSpace(guru.Slug) == "" || len(holdings) == 0 {
+		return fmt.Errorf("refusing empty guru holdings replacement")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(guru).Error; err != nil {
+			return err
+		}
+		for i := range holdings {
+			holdings[i].GuruID = guru.ID
+		}
+		if err := tx.Where("guru_id = ?", guru.ID).Delete(&models.Holding{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&holdings).Error
+	})
 }
 
 type eastMoneyResp struct {
@@ -221,23 +249,7 @@ func refreshHotMoneyAlt() (int, error) {
 		return 0, fmt.Errorf("eastmoney alt empty")
 	}
 
-	// Map into a synthetic hot_money guru "lhb-live"
-	var guru models.Guru
-	if err := DB.Where("slug = ?", "lhb-live").First(&guru).Error; err != nil {
-		guru = models.Guru{
-			Name:       "龙虎榜席位（实时）",
-			NameEn:     "LHB Live",
-			Slug:       "lhb-live",
-			Title:      "Hot Money",
-			FundName:   "东方财富龙虎榜",
-			Type:       "hot_money",
-			AvatarCode: "LH",
-		}
-		DB.Create(&guru)
-	}
-	DB.Where("guru_id = ?", guru.ID).Delete(&models.Holding{})
-
-	n := 0
+	holdings := make([]models.Holding, 0, 40)
 	for _, row := range data {
 		m, _ := row.(map[string]any)
 		code, _ := m["SECURITY_CODE"].(string)
@@ -250,31 +262,16 @@ func refreshHotMoneyAlt() (int, error) {
 		if net < 0 {
 			change = "- 减持"
 		}
-		DB.Create(&models.Holding{
-			GuruID:      guru.ID,
-			StockSymbol: code,
-			StockName:   name,
-			Value:       fmt.Sprintf("%.0f", net),
-			Shares:      "—",
-			Change:      change,
-			Weight:      0,
-		})
-		n++
-		if n >= 40 {
+		holdings = append(holdings, models.Holding{StockSymbol: code, StockName: name, Value: fmt.Sprintf("%.0f", net), Shares: "—", Change: change})
+		if len(holdings) >= 40 {
 			break
 		}
 	}
-	guru.PositionCount = n
-	if n > 0 {
-		var top models.Holding
-		DB.Where("guru_id = ?", guru.ID).Order("id asc").First(&top)
-		guru.TopStock = top.StockSymbol
+	if len(holdings) == 0 {
+		return 0, fmt.Errorf("eastmoney alt contains no valid holdings")
 	}
-	DB.Save(&guru)
-	return n, nil
-}
 
-func applyHotMoneyRows(parsed eastMoneyResp) (int, error) {
+	// Map into a synthetic hot_money guru "lhb-live".
 	var guru models.Guru
 	if err := DB.Where("slug = ?", "lhb-live").First(&guru).Error; err != nil {
 		guru = models.Guru{
@@ -286,10 +283,17 @@ func applyHotMoneyRows(parsed eastMoneyResp) (int, error) {
 			Type:       "hot_money",
 			AvatarCode: "LH",
 		}
-		DB.Create(&guru)
 	}
-	DB.Where("guru_id = ?", guru.ID).Delete(&models.Holding{})
-	n := 0
+	guru.PositionCount = len(holdings)
+	guru.TopStock = holdings[0].StockSymbol
+	if err := replaceGuruHoldings(DB, &guru, holdings); err != nil {
+		return 0, err
+	}
+	return len(holdings), nil
+}
+
+func applyHotMoneyRows(parsed eastMoneyResp) (int, error) {
+	holdings := make([]models.Holding, 0, 40)
 	for _, row := range parsed.Result.Data {
 		if row.SecurityCode == "" {
 			continue
@@ -298,21 +302,33 @@ func applyHotMoneyRows(parsed eastMoneyResp) (int, error) {
 		if row.Net < 0 {
 			change = "- 减持"
 		}
-		DB.Create(&models.Holding{
-			GuruID:      guru.ID,
-			StockSymbol: row.SecurityCode,
-			StockName:   row.SecurityName,
-			Value:       fmt.Sprintf("%.0f", row.Net),
-			Shares:      "—",
-			Change:      change,
-			Weight:      0,
+		holdings = append(holdings, models.Holding{
+			StockSymbol: row.SecurityCode, StockName: row.SecurityName, Value: fmt.Sprintf("%.0f", row.Net), Shares: "—", Change: change,
 		})
-		n++
-		if n >= 40 {
+		if len(holdings) >= 40 {
 			break
 		}
 	}
-	guru.PositionCount = n
-	DB.Save(&guru)
-	return n, nil
+	if len(holdings) == 0 {
+		return 0, fmt.Errorf("eastmoney response contains no valid holdings")
+	}
+
+	var guru models.Guru
+	if err := DB.Where("slug = ?", "lhb-live").First(&guru).Error; err != nil {
+		guru = models.Guru{
+			Name:       "龙虎榜席位（实时）",
+			NameEn:     "LHB Live",
+			Slug:       "lhb-live",
+			Title:      "Hot Money",
+			FundName:   "东方财富龙虎榜",
+			Type:       "hot_money",
+			AvatarCode: "LH",
+		}
+	}
+	guru.PositionCount = len(holdings)
+	guru.TopStock = holdings[0].StockSymbol
+	if err := replaceGuruHoldings(DB, &guru, holdings); err != nil {
+		return 0, err
+	}
+	return len(holdings), nil
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { HoldingItem } from '../../types/portfolio';
-import { formatPercent, formatPrice, getChangeColorClass } from '../../utils/format';
+import { formatPercent, getChangeColorClass } from '../../utils/format';
 
 interface HoldingsCardProps {
   item: HoldingItem;
@@ -11,6 +11,9 @@ interface HoldingsCardProps {
 export const HoldingsCard: React.FC<HoldingsCardProps> = ({ item, onRemove, onClick }) => {
   const pl = item.profitLoss;
   const plPct = item.profitLossPercent;
+  const currency = item.currency || (item.venue === 'cn' ? 'CNY' : 'USD');
+  const formatMoney = (value: number) =>
+    new Intl.NumberFormat('zh-CN', { style: 'currency', currency, minimumFractionDigits: 2 }).format(value);
 
   return (
     <div
@@ -38,18 +41,24 @@ export const HoldingsCard: React.FC<HoldingsCardProps> = ({ item, onRemove, onCl
           数量 <span className="font-mono text-ink">{item.quantity}</span>
         </div>
         <div>
-          成本 <span className="font-mono text-ink">{formatPrice(item.avgCost)}</span>
+          成本 <span className="font-mono text-ink">{formatMoney(item.avgCost)}</span>
+        </div>
+        <div>
+          行业 <span className="text-ink">{item.sector || '未分类'}</span>
+        </div>
+        <div>
+          止损 <span className={item.stopLoss ? 'font-mono text-ink' : 'text-down'}>{item.stopLoss ? formatMoney(item.stopLoss) : '未设置'}</span>
         </div>
         {item.currentValue !== undefined && (
           <div>
-            市值 <span className="font-mono text-ink">{formatPrice(item.currentValue)}</span>
+            市值 <span className="font-mono text-ink">{formatMoney(item.currentValue)}</span>
           </div>
         )}
         {pl !== undefined && plPct !== undefined && (
           <div>
             盈亏{' '}
             <span className={`font-mono font-semibold ${getChangeColorClass(pl)}`}>
-              {formatPrice(pl)} ({formatPercent(plPct)})
+              {formatMoney(pl)} ({formatPercent(plPct)})
             </span>
           </div>
         )}

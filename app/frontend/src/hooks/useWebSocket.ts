@@ -1,17 +1,36 @@
 import { useEffect, useRef } from 'react'
 import { useAnalysisStore, NodeEvent } from '../stores/analysisStore'
 import { wsUrl } from '../utils/api'
+import { bootstrapLocalAdminSession } from './useAdminSession'
 
-export const useWebSocket = () => {
+export const useWebSocket = (enabled = true) => {
   const { setWsStatus, handleWsEvent } = useAnalysisStore()
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const activeRef = useRef(false)
+  const connectingRef = useRef(false)
 
-  const connect = () => {
-    if (!activeRef.current || socketRef.current) return
+  const scheduleReconnect = () => {
+    if (!activeRef.current || reconnectTimeoutRef.current) return
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      reconnectTimeoutRef.current = null
+      void connect()
+    }, 3000)
+  }
 
+  const connect = async () => {
+    if (!activeRef.current || socketRef.current || connectingRef.current) return
+
+    connectingRef.current = true
     setWsStatus('connecting')
+    const authorized = await bootstrapLocalAdminSession()
+    connectingRef.current = false
+    if (!activeRef.current) return
+    if (!authorized) {
+      setWsStatus('disconnected')
+      scheduleReconnect()
+      return
+    }
     const ws = new WebSocket(wsUrl())
     socketRef.current = ws
 
@@ -40,9 +59,7 @@ export const useWebSocket = () => {
       console.log('[WS] Disconnected, scheduling reconnect...')
       
       // Auto-reconnect after 3 seconds
-      reconnectTimeoutRef.current = window.setTimeout(() => {
-        connect()
-      }, 3000)
+      scheduleReconnect()
     }
 
     ws.onerror = (err) => {
@@ -52,8 +69,13 @@ export const useWebSocket = () => {
   }
 
   useEffect(() => {
+    if (!enabled) {
+      activeRef.current = false
+      setWsStatus('disconnected')
+      return
+    }
     activeRef.current = true
-    connect()
+    void connect()
     return () => {
       activeRef.current = false
       if (socketRef.current) {
@@ -63,5 +85,5 @@ export const useWebSocket = () => {
         window.clearTimeout(reconnectTimeoutRef.current)
       }
     }
-  }, [])
+  }, [enabled])
 }

@@ -1,0 +1,305 @@
+/* Floating AI HUD Pill on TradingView / Xueqiu / Yahoo */
+#stockgod-floating-hud {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+.sg-hud-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(11, 15, 25, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border-radius: 30px;
+  padding: 6px 14px 6px 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #fff;
+}
+
+.sg-hud-pill:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow: 0 12px 36px rgba(245, 158, 11, 0.25);
+}
+
+.sg-hud-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.sg-hud-ticker {
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 13px;
+  color: #fff;
+}
+
+.sg-hud-score {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 1px 6px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f59e0b;
+}
+
+/* Expanded Card */
+.sg-hud-card {
+  position: absolute;
+  bottom: 46px;
+  right: 0;
+  width: 340px;
+  background: #0b0f19;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7);
+  padding: 14px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  animation: sgFadeIn 0.18s ease-out;
+}
+
+.sg-hud-card.active {
+  display: flex;
+}
+
+@keyframes sgFadeIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.sg-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+
+.sg-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sg-sym-badge {
+  font-family: monospace;
+  font-size: 11px;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.sg-lang-btn {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sg-lang-btn:hover {
+  background: #f59e0b;
+  color: #000;
+}
+
+.sg-card-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.sg-card-close:hover {
+  color: #fff;
+}
+
+/* Quick Tools Bar */
+.sg-tools-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+}
+
+.sg-tool-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 5px 2px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.sg-tool-btn:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+}
+
+.sg-tool-accent {
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.sg-tool-accent:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: #c7d2fe;
+}
+
+/* Dark Pool Flow Pill */
+.sg-flow-pill {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #7dd3fc;
+  text-align: center;
+}
+
+/* 5 Gods Mini Preview */
+.sg-gods-mini {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  background: #111726;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 6px 2px;
+  text-align: center;
+}
+
+.sg-g-cell .lbl {
+  display: block;
+  font-size: 9px;
+  color: #94a3b8;
+  margin-bottom: 1px;
+}
+
+.sg-g-cell .val {
+  font-family: monospace;
+  font-size: 12px;
+  color: #fff;
+}
+
+/* Pivots Box */
+.sg-pivots-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.sg-p-item {
+  background: #131a29;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.sg-p-lbl {
+  font-size: 9px;
+  color: #94a3b8;
+  display: block;
+}
+
+.sg-p-num {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+.sg-verdict-box {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #cbd5e1;
+}
+
+.sg-verdict-box strong {
+  color: #f59e0b;
+}
+
+.sg-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sg-btn {
+  flex: 1;
+  text-align: center;
+  background: #f59e0b;
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 0;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.sg-btn-sec {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* Toast Message */
+.sg-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: rgba(16, 185, 129, 0.95);
+  color: #000;
+  padding: 10px 20px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  z-index: 999999999;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sg-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

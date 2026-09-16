@@ -29,32 +29,39 @@ type YFinanceClient struct {
 
 // NewYFinanceClient creates a new Yahoo Finance client with cookie jar for crumb auth.
 func NewYFinanceClient() *YFinanceClient {
+	return NewYFinanceClientWithTimeout(requestTimeout)
+}
+
+// NewYFinanceClientWithTimeout creates a client for latency-sensitive fan-out calls.
+func NewYFinanceClientWithTimeout(timeout time.Duration) *YFinanceClient {
 	jar, _ := cookiejar.New(nil)
 	return &YFinanceClient{
-		httpClient: &http.Client{Timeout: requestTimeout, Jar: jar},
+		httpClient: &http.Client{Timeout: timeout, Jar: jar},
 	}
 }
 
 // StockQuote holds basic quote data.
 type StockQuote struct {
-	Symbol        string  `json:"symbol"`
-	ShortName     string  `json:"shortName"`
-	LongName      string  `json:"longName"`
-	Currency      string  `json:"currency"`
-	RegularPrice  float64 `json:"regularMarketPrice"`
-	PreviousClose float64 `json:"regularMarketPreviousClose"`
-	Open          float64 `json:"regularMarketOpen"`
-	DayHigh       float64 `json:"regularMarketDayHigh"`
-	DayLow        float64 `json:"regularMarketDayLow"`
-	Volume        int64   `json:"regularMarketVolume"`
-	MarketCap     float64 `json:"marketCap"`
-	PERatio       float64 `json:"trailingPE"`
-	ForwardPE     float64 `json:"forwardPE"`
-	DividendYield float64 `json:"dividendYield"`
-	FiftyTwoHigh  float64 `json:"fiftyTwoWeekHigh"`
-	FiftyTwoLow   float64 `json:"fiftyTwoWeekLow"`
-	Beta          float64 `json:"beta"`
-	EPS           float64 `json:"trailingEps"`
+	Symbol        string    `json:"symbol"`
+	ShortName     string    `json:"shortName"`
+	LongName      string    `json:"longName"`
+	Currency      string    `json:"currency"`
+	RegularPrice  float64   `json:"regularMarketPrice"`
+	PreviousClose float64   `json:"regularMarketPreviousClose"`
+	Open          float64   `json:"regularMarketOpen"`
+	DayHigh       float64   `json:"regularMarketDayHigh"`
+	DayLow        float64   `json:"regularMarketDayLow"`
+	Volume        int64     `json:"regularMarketVolume"`
+	MarketCap     float64   `json:"marketCap"`
+	PERatio       float64   `json:"trailingPE"`
+	ForwardPE     float64   `json:"forwardPE"`
+	DividendYield float64   `json:"dividendYield"`
+	FiftyTwoHigh  float64   `json:"fiftyTwoWeekHigh"`
+	FiftyTwoLow   float64   `json:"fiftyTwoWeekLow"`
+	Beta          float64   `json:"beta"`
+	EPS           float64   `json:"trailingEps"`
+	ObservedAt    time.Time `json:"-"`
+	MarketState   string    `json:"-"`
 }
 
 // HistoricalBar represents one OHLCV bar.
@@ -69,53 +76,242 @@ type HistoricalBar struct {
 
 // FundamentalData holds company fundamentals.
 type FundamentalData struct {
-	Sector              string  `json:"sector"`
-	Industry            string  `json:"industry"`
-	FullTimeEmployees   int     `json:"fullTimeEmployees"`
-	Website             string  `json:"website"`
-	LongBusinessSummary string  `json:"longBusinessSummary"`
-	MarketCap           float64 `json:"marketCap"`
-	EnterpriseValue     float64 `json:"enterpriseValue"`
-	ProfitMargin        float64 `json:"profitMargins"`
-	OperatingMargin     float64 `json:"operatingMargins"`
-	ReturnOnEquity      float64 `json:"returnOnEquity"`
-	ReturnOnAssets      float64 `json:"returnOnAssets"`
-	RevenueGrowth       float64 `json:"revenueGrowth"`
-	EarningsGrowth      float64 `json:"earningsGrowth"`
-	DebtToEquity        float64 `json:"debtToEquity"`
-	CurrentRatio        float64 `json:"currentRatio"`
-	BookValue           float64 `json:"bookValue"`
-	FreeCashflow        float64 `json:"freeCashflow"`
-	TotalRevenue        float64 `json:"totalRevenue"`
-	GrossProfits        float64 `json:"grossProfits"`
-	EBITDA              float64 `json:"ebitda"`
+	Source              string            `json:"source,omitempty"`
+	FiscalPeriod        string            `json:"fiscalPeriod,omitempty"`
+	AsOf                string            `json:"asOf,omitempty"`
+	FilingDate          string            `json:"filingDate,omitempty"`
+	Accession           string            `json:"accession,omitempty"`
+	SourceURL           string            `json:"sourceURL,omitempty"`
+	SourceFetchedAt     string            `json:"sourceFetchedAt,omitempty"`
+	SourceContentHash   string            `json:"sourceContentHash,omitempty"`
+	SourceTransport     string            `json:"sourceTransport,omitempty"`
+	Sector              string            `json:"sector"`
+	Industry            string            `json:"industry"`
+	FullTimeEmployees   *int              `json:"fullTimeEmployees"`
+	Website             string            `json:"website"`
+	LongBusinessSummary string            `json:"longBusinessSummary"`
+	MarketCap           *float64          `json:"marketCap"`
+	EnterpriseValue     *float64          `json:"enterpriseValue"`
+	ProfitMargin        *float64          `json:"profitMargins"`
+	OperatingMargin     *float64          `json:"operatingMargins"`
+	ReturnOnEquity      *float64          `json:"returnOnEquity"`
+	ReturnOnAssets      *float64          `json:"returnOnAssets"`
+	RevenueGrowth       *float64          `json:"revenueGrowth"`
+	EarningsGrowth      *float64          `json:"earningsGrowth"`
+	DebtToEquity        *float64          `json:"debtToEquity"`
+	CurrentRatio        *float64          `json:"currentRatio"`
+	BookValue           *float64          `json:"bookValue"`
+	FreeCashflow        *float64          `json:"freeCashflow"`
+	TotalRevenue        *float64          `json:"totalRevenue"`
+	GrossProfits        *float64          `json:"grossProfits"`
+	EBITDA              *float64          `json:"ebitda"`
+	Availability        map[string]bool   `json:"availability"`
+	Periods             []FinancialPeriod `json:"periods"`
+	DerivationInputs    []FinancialPeriod `json:"derivationInputs,omitempty"`
+}
+
+// FinancialPeriod is one filing-bound financial period. Missing values stay
+// omitted; filing metadata must come from an upstream filing index.
+type FinancialPeriod struct {
+	FiscalPeriod       string                            `json:"fiscalPeriod"`
+	Frequency          string                            `json:"frequency,omitempty"`
+	Form               string                            `json:"form,omitempty"`
+	PeriodStart        string                            `json:"periodStart,omitempty"`
+	PeriodEnd          string                            `json:"periodEnd"`
+	FilingDate         string                            `json:"filingDate"`
+	Accession          string                            `json:"accession"`
+	SourceURL          string                            `json:"sourceURL"`
+	TotalRevenue       float64                           `json:"totalRevenue,omitempty"`
+	GrossProfit        float64                           `json:"grossProfit,omitempty"`
+	OperatingIncome    float64                           `json:"operatingIncome,omitempty"`
+	NetIncome          float64                           `json:"netIncome,omitempty"`
+	TotalAssets        float64                           `json:"totalAssets,omitempty"`
+	TotalLiabilities   float64                           `json:"totalLiabilities,omitempty"`
+	StockholdersEquity float64                           `json:"stockholdersEquity,omitempty"`
+	CashAndEquivalents float64                           `json:"cashAndEquivalents,omitempty"`
+	SharesOutstanding  float64                           `json:"sharesOutstanding,omitempty"`
+	AvailableFields    []string                          `json:"availableFields,omitempty"`
+	FieldEvidence      map[string]FinancialFieldEvidence `json:"fieldEvidence,omitempty"`
+}
+
+// FinancialFieldEvidence binds one reported value to the exact filing fact
+// used for that period. Duration facts retain their reported start/end;
+// instant facts use the same date for start/end.
+type FinancialFieldEvidence struct {
+	Source      string `json:"source"`
+	URL         string `json:"url"`
+	Unit        string `json:"unit"`
+	PeriodStart string `json:"periodStart"`
+	PeriodEnd   string `json:"periodEnd"`
+	Form        string `json:"form"`
+	Filed       string `json:"filed"`
+	Accession   string `json:"accession"`
+	PeriodKind  string `json:"periodKind"`
+}
+
+// MarshalJSON makes unavailable period metrics explicit nulls. Internal
+// collectors retain numeric fields plus AvailableFields so existing dataflow
+// consumers can distinguish a legitimate reported zero from absence.
+func (p FinancialPeriod) MarshalJSON() ([]byte, error) {
+	type nullablePeriod struct {
+		FiscalPeriod       string                            `json:"fiscalPeriod"`
+		Frequency          string                            `json:"frequency,omitempty"`
+		Form               string                            `json:"form,omitempty"`
+		PeriodStart        string                            `json:"periodStart,omitempty"`
+		PeriodEnd          string                            `json:"periodEnd"`
+		FilingDate         string                            `json:"filingDate"`
+		Accession          string                            `json:"accession"`
+		SourceURL          string                            `json:"sourceURL"`
+		TotalRevenue       *float64                          `json:"totalRevenue"`
+		GrossProfit        *float64                          `json:"grossProfit"`
+		OperatingIncome    *float64                          `json:"operatingIncome"`
+		NetIncome          *float64                          `json:"netIncome"`
+		TotalAssets        *float64                          `json:"totalAssets"`
+		TotalLiabilities   *float64                          `json:"totalLiabilities"`
+		StockholdersEquity *float64                          `json:"stockholdersEquity"`
+		CashAndEquivalents *float64                          `json:"cashAndEquivalents"`
+		SharesOutstanding  *float64                          `json:"sharesOutstanding"`
+		AvailableFields    []string                          `json:"availableFields"`
+		FieldEvidence      map[string]FinancialFieldEvidence `json:"fieldEvidence,omitempty"`
+	}
+	return json.Marshal(nullablePeriod{
+		FiscalPeriod: p.FiscalPeriod, Frequency: p.Frequency, Form: p.Form, PeriodStart: p.PeriodStart,
+		PeriodEnd: p.PeriodEnd, FilingDate: p.FilingDate, Accession: p.Accession, SourceURL: p.SourceURL,
+		TotalRevenue: periodJSONValue(p, "totalRevenue", p.TotalRevenue), GrossProfit: periodJSONValue(p, "grossProfit", p.GrossProfit),
+		OperatingIncome: periodJSONValue(p, "operatingIncome", p.OperatingIncome), NetIncome: periodJSONValue(p, "netIncome", p.NetIncome),
+		TotalAssets: periodJSONValue(p, "totalAssets", p.TotalAssets), TotalLiabilities: periodJSONValue(p, "totalLiabilities", p.TotalLiabilities),
+		StockholdersEquity: periodJSONValue(p, "stockholdersEquity", p.StockholdersEquity), CashAndEquivalents: periodJSONValue(p, "cashAndEquivalents", p.CashAndEquivalents),
+		SharesOutstanding: periodJSONValue(p, "sharesOutstanding", p.SharesOutstanding),
+		AvailableFields:   p.AvailableFields, FieldEvidence: p.FieldEvidence,
+	})
+}
+
+func periodJSONValue(period FinancialPeriod, field string, value float64) *float64 {
+	for _, available := range period.AvailableFields {
+		if available == field {
+			copy := value
+			return &copy
+		}
+	}
+	return nil
 }
 
 // StockMetrics is the frontend-facing fundamentals card payload.
 type StockMetrics struct {
-	Symbol           string  `json:"symbol"`
-	Name             string  `json:"name,omitempty"`
-	Sector           string  `json:"sector,omitempty"`
-	Industry         string  `json:"industry,omitempty"`
-	Price            float64 `json:"price,omitempty"`
-	TrailingPE       float64 `json:"trailingPE,omitempty"`
-	ForwardPE        float64 `json:"forwardPE,omitempty"`
-	PriceToSales     float64 `json:"priceToSales,omitempty"`
-	EnterpriseToEbit float64 `json:"enterpriseToEbitda,omitempty"`
-	PEG              float64 `json:"peg,omitempty"`
-	PriceToBook      float64 `json:"priceToBook,omitempty"`
-	GrossMargin      float64 `json:"grossMargin,omitempty"`
-	ProfitMargin     float64 `json:"profitMargin,omitempty"`
-	ROE              float64 `json:"roe,omitempty"`
-	RevenueGrowth    float64 `json:"revenueGrowth,omitempty"`
-	DividendYield    float64 `json:"dividendYield,omitempty"`
-	Beta             float64 `json:"beta,omitempty"`
-	TargetMeanPrice  float64 `json:"targetMeanPrice,omitempty"`
-	Recommendation   string  `json:"recommendation,omitempty"`
-	FiftyTwoHigh     float64 `json:"fiftyTwoWeekHigh,omitempty"`
-	FiftyTwoLow      float64 `json:"fiftyTwoWeekLow,omitempty"`
-	FiftyTwoPos      float64 `json:"fiftyTwoWeekPos,omitempty"`
-	Source           string  `json:"source"`
+	Symbol             string                     `json:"symbol"`
+	Name               string                     `json:"name,omitempty"`
+	Sector             string                     `json:"sector,omitempty"`
+	Industry           string                     `json:"industry,omitempty"`
+	Price              float64                    `json:"price,omitempty"`
+	TrailingPE         float64                    `json:"trailingPE,omitempty"`
+	ForwardPE          float64                    `json:"forwardPE,omitempty"`
+	PriceToSales       float64                    `json:"priceToSales,omitempty"`
+	EnterpriseToEbit   float64                    `json:"enterpriseToEbitda,omitempty"`
+	PEG                float64                    `json:"peg,omitempty"`
+	PriceToBook        float64                    `json:"priceToBook,omitempty"`
+	GrossMargin        float64                    `json:"grossMargin,omitempty"`
+	ProfitMargin       float64                    `json:"profitMargin,omitempty"`
+	ROE                float64                    `json:"roe,omitempty"`
+	RevenueGrowth      float64                    `json:"revenueGrowth,omitempty"`
+	DividendYield      float64                    `json:"dividendYield,omitempty"`
+	Beta               float64                    `json:"beta,omitempty"`
+	TargetMeanPrice    float64                    `json:"targetMeanPrice,omitempty"`
+	Recommendation     string                     `json:"recommendation,omitempty"`
+	FiftyTwoHigh       float64                    `json:"fiftyTwoWeekHigh,omitempty"`
+	FiftyTwoLow        float64                    `json:"fiftyTwoWeekLow,omitempty"`
+	FiftyTwoPos        float64                    `json:"fiftyTwoWeekPos,omitempty"`
+	TotalRevenue       float64                    `json:"totalRevenue,omitempty"`
+	GrossProfit        float64                    `json:"grossProfit,omitempty"`
+	OperatingIncome    float64                    `json:"operatingIncome,omitempty"`
+	NetIncome          float64                    `json:"netIncome,omitempty"`
+	TotalAssets        float64                    `json:"totalAssets,omitempty"`
+	TotalLiabilities   float64                    `json:"totalLiabilities,omitempty"`
+	StockholdersEquity float64                    `json:"stockholdersEquity,omitempty"`
+	CashAndEquivalents float64                    `json:"cashAndEquivalents,omitempty"`
+	Source             string                     `json:"source"`
+	FiscalPeriod       string                     `json:"fiscalPeriod"`
+	AsOf               string                     `json:"asOf"`
+	FilingDate         string                     `json:"filingDate,omitempty"`
+	Accession          string                     `json:"accession,omitempty"`
+	SourceURL          string                     `json:"sourceURL,omitempty"`
+	FetchedAt          string                     `json:"fetchedAt"`
+	SourceFetchedAt    string                     `json:"sourceFetchedAt,omitempty"`
+	SourceContentHash  string                     `json:"sourceContentHash,omitempty"`
+	SourceTransport    string                     `json:"sourceTransport,omitempty"`
+	SourceLinks        []SourceReference          `json:"sourceLinks"`
+	FieldSources       map[string]FieldProvenance `json:"fieldSources"`
+	Periods            []FinancialPeriod          `json:"periods"`
+	DerivationInputs   []FinancialPeriod          `json:"derivationInputs,omitempty"`
+}
+
+// SourceReference is a human-verifiable upstream page used by a payload.
+type SourceReference struct {
+	Source string `json:"source"`
+	Label  string `json:"label"`
+	URL    string `json:"url"`
+}
+
+// FieldProvenance identifies where and when an individual metric came from.
+type FieldProvenance struct {
+	Source       string `json:"source"`
+	URL          string `json:"url"`
+	AsOf         string `json:"asOf"`
+	FiscalPeriod string `json:"fiscalPeriod,omitempty"`
+	FilingDate   string `json:"filingDate,omitempty"`
+	Accession    string `json:"accession,omitempty"`
+	PeriodStart  string `json:"periodStart,omitempty"`
+	Frequency    string `json:"frequency,omitempty"`
+	Form         string `json:"form,omitempty"`
+	Unit         string `json:"unit,omitempty"`
+}
+
+// FinalizeStockMetricsEvidence makes unavailable dates explicit and records fetch time separately.
+func FinalizeStockMetricsEvidence(m *StockMetrics, fetchedAt time.Time) {
+	if m == nil {
+		return
+	}
+	if m.FiscalPeriod == "" {
+		m.FiscalPeriod = "unknown"
+	}
+	if m.AsOf == "" {
+		m.AsOf = "unknown"
+	}
+	m.FetchedAt = fetchedAt.UTC().Format(time.RFC3339)
+	if m.SourceLinks == nil {
+		m.SourceLinks = []SourceReference{}
+	}
+	if m.FieldSources == nil {
+		m.FieldSources = map[string]FieldProvenance{}
+	}
+	if len(m.SourceLinks) > 0 {
+		seen := map[string]bool{}
+		sources := make([]string, 0, len(m.SourceLinks))
+		for _, link := range m.SourceLinks {
+			if link.Source != "" && !seen[link.Source] {
+				seen[link.Source] = true
+				sources = append(sources, link.Source)
+			}
+		}
+		m.Source = strings.Join(sources, "+")
+	}
+}
+
+func addMetricSource(m *StockMetrics, source, label, sourceURL, asOf string, fields ...string) {
+	if m.FieldSources == nil {
+		m.FieldSources = map[string]FieldProvenance{}
+	}
+	if asOf == "" {
+		asOf = "unknown"
+	}
+	for _, field := range fields {
+		m.FieldSources[field] = FieldProvenance{Source: source, URL: sourceURL, AsOf: asOf}
+	}
+	for _, link := range m.SourceLinks {
+		if link.URL == sourceURL {
+			return
+		}
+	}
+	m.SourceLinks = append(m.SourceLinks, SourceReference{Source: source, Label: label, URL: sourceURL})
 }
 
 // NewsItem is one related headline.
@@ -177,6 +373,8 @@ func (c *YFinanceClient) invalidateCrumb() {
 
 // GetQuote fetches real-time quote for a ticker via chart (no crumb).
 func (c *YFinanceClient) GetQuote(ticker string) (*StockQuote, error) {
+	origTicker := ticker
+	ticker = ToYahooSymbol(ticker)
 	u := fmt.Sprintf("%s/v8/finance/chart/%s?interval=1d&range=5d",
 		yfinanceBaseURL, url.PathEscape(ticker))
 	body, err := c.doRequest(u, false)
@@ -187,15 +385,17 @@ func (c *YFinanceClient) GetQuote(ticker string) (*StockQuote, error) {
 		Chart struct {
 			Result []struct {
 				Meta struct {
-					Symbol             string  `json:"symbol"`
-					ShortName          string  `json:"shortName"`
-					LongName           string  `json:"longName"`
-					Currency           string  `json:"currency"`
-					RegularMarketPrice float64 `json:"regularMarketPrice"`
-					ChartPreviousClose float64 `json:"chartPreviousClose"`
-					RegularMarketVolume int64  `json:"regularMarketVolume"`
-					FiftyTwoWeekHigh   float64 `json:"fiftyTwoWeekHigh"`
-					FiftyTwoWeekLow    float64 `json:"fiftyTwoWeekLow"`
+					Symbol              string  `json:"symbol"`
+					ShortName           string  `json:"shortName"`
+					LongName            string  `json:"longName"`
+					Currency            string  `json:"currency"`
+					RegularMarketPrice  float64 `json:"regularMarketPrice"`
+					ChartPreviousClose  float64 `json:"chartPreviousClose"`
+					RegularMarketVolume int64   `json:"regularMarketVolume"`
+					RegularMarketTime   int64   `json:"regularMarketTime"`
+					MarketState         string  `json:"marketState"`
+					FiftyTwoWeekHigh    float64 `json:"fiftyTwoWeekHigh"`
+					FiftyTwoWeekLow     float64 `json:"fiftyTwoWeekLow"`
 				} `json:"meta"`
 			} `json:"result"`
 		} `json:"chart"`
@@ -204,11 +404,11 @@ func (c *YFinanceClient) GetQuote(ticker string) (*StockQuote, error) {
 		return nil, fmt.Errorf("parse quote response: %w", err)
 	}
 	if len(resp.Chart.Result) == 0 {
-		return nil, fmt.Errorf("no quote data for %s", ticker)
+		return nil, fmt.Errorf("no quote data for %s", origTicker)
 	}
 	m := resp.Chart.Result[0].Meta
 	return &StockQuote{
-		Symbol:        firstNonEmpty(m.Symbol, ticker),
+		Symbol:        firstNonEmpty(m.Symbol, origTicker),
 		ShortName:     m.ShortName,
 		LongName:      m.LongName,
 		Currency:      m.Currency,
@@ -217,11 +417,14 @@ func (c *YFinanceClient) GetQuote(ticker string) (*StockQuote, error) {
 		Volume:        m.RegularMarketVolume,
 		FiftyTwoHigh:  m.FiftyTwoWeekHigh,
 		FiftyTwoLow:   m.FiftyTwoWeekLow,
+		ObservedAt:    time.Unix(m.RegularMarketTime, 0).UTC(),
+		MarketState:   strings.ToLower(m.MarketState),
 	}, nil
 }
 
 // GetHistoricalData fetches OHLCV bars for a date range.
 func (c *YFinanceClient) GetHistoricalData(ticker, startDate, endDate string) ([]HistoricalBar, error) {
+	ticker = ToYahooSymbol(ticker)
 	start, err := time.Parse("2006-01-02", startDate)
 	if err != nil {
 		return nil, fmt.Errorf("invalid start date: %w", err)
@@ -231,9 +434,7 @@ func (c *YFinanceClient) GetHistoricalData(ticker, startDate, endDate string) ([
 		return nil, fmt.Errorf("invalid end date: %w", err)
 	}
 
-	u := fmt.Sprintf("%s/v8/finance/chart/%s?period1=%d&period2=%d&interval=1d",
-		yfinanceBaseURL, url.PathEscape(ticker),
-		start.Unix(), end.Unix())
+	u := historicalDataURL(ticker, start, end)
 
 	body, err := c.doRequest(u, false)
 	if err != nil {
@@ -290,6 +491,11 @@ func (c *YFinanceClient) GetHistoricalData(ticker, startDate, endDate string) ([
 	return bars, nil
 }
 
+func historicalDataURL(ticker string, start, end time.Time) string {
+	return fmt.Sprintf("%s/v8/finance/chart/%s?period1=%d&period2=%d&interval=1d",
+		yfinanceBaseURL, url.PathEscape(ToYahooSymbol(ticker)), start.Unix(), end.Unix())
+}
+
 // GetFundamentals fetches company profile and financial fundamentals.
 func (c *YFinanceClient) GetFundamentals(ticker string) (*FundamentalData, error) {
 	m, err := c.GetStockMetricsLive(ticker)
@@ -297,20 +503,53 @@ func (c *YFinanceClient) GetFundamentals(ticker string) (*FundamentalData, error
 		return nil, err
 	}
 	return &FundamentalData{
-		Sector:          m.Sector,
-		Industry:        m.Industry,
-		MarketCap:       0,
-		ProfitMargin:    m.ProfitMargin,
-		ReturnOnEquity:  m.ROE,
-		RevenueGrowth:   m.RevenueGrowth,
-		EnterpriseValue: 0,
-		OperatingMargin: 0,
+		Source:            m.Source,
+		FiscalPeriod:      m.FiscalPeriod,
+		AsOf:              m.AsOf,
+		FilingDate:        m.FilingDate,
+		Accession:         m.Accession,
+		SourceURL:         m.SourceURL,
+		SourceFetchedAt:   m.SourceFetchedAt,
+		SourceContentHash: m.SourceContentHash,
+		SourceTransport:   m.SourceTransport,
+		Sector:            m.Sector,
+		Industry:          m.Industry,
+		ProfitMargin:      stockMetricPointer(m, "profitMargin", m.ProfitMargin),
+		ReturnOnEquity:    stockMetricPointer(m, "roe", m.ROE),
+		RevenueGrowth:     stockMetricPointer(m, "revenueGrowth", m.RevenueGrowth),
+		TotalRevenue:      stockMetricPointer(m, "totalRevenue", m.TotalRevenue),
+		Availability:      stockMetricAvailability(m),
+		Periods:           append([]FinancialPeriod(nil), m.Periods...),
+		DerivationInputs:  append([]FinancialPeriod(nil), m.DerivationInputs...),
 	}, nil
+}
+
+func stockMetricPointer(metrics *StockMetrics, field string, value float64) *float64 {
+	if metrics == nil {
+		return nil
+	}
+	if _, ok := metrics.FieldSources[field]; !ok {
+		return nil
+	}
+	copy := value
+	return &copy
+}
+
+func stockMetricAvailability(metrics *StockMetrics) map[string]bool {
+	out := map[string]bool{}
+	if metrics == nil {
+		return out
+	}
+	for field := range metrics.FieldSources {
+		out[field] = true
+	}
+	return out
 }
 
 // GetStockMetrics fetches valuation + quality metrics via crumb-authenticated quoteSummary.
 func (c *YFinanceClient) GetStockMetrics(ticker string) (*StockMetrics, error) {
-	ticker = strings.TrimSpace(strings.ToUpper(ticker))
+	origTicker := ticker
+	ticker = ToYahooSymbol(strings.TrimSpace(strings.ToUpper(ticker)))
 	modules := "summaryDetail,defaultKeyStatistics,financialData,assetProfile,price"
 	body, err := c.quoteSummary(ticker, modules)
 	if err != nil {
@@ -334,26 +573,28 @@ func (c *YFinanceClient) GetStockMetrics(ticker string) (*StockMetrics, error) {
 					Beta             yahooRaw `json:"beta"`
 				} `json:"summaryDetail"`
 				DefaultKeyStatistics *struct {
-					TrailingPE       yahooRaw `json:"trailingPE"`
-					ForwardPE        yahooRaw `json:"forwardPE"`
-					PegRatio         yahooRaw `json:"pegRatio"`
-					PriceToBook      yahooRaw `json:"priceToBook"`
-					EnterpriseToEbit yahooRaw `json:"enterpriseToEbitda"`
-					Beta             yahooRaw `json:"beta"`
+					TrailingPE        yahooRaw `json:"trailingPE"`
+					ForwardPE         yahooRaw `json:"forwardPE"`
+					PegRatio          yahooRaw `json:"pegRatio"`
+					PriceToBook       yahooRaw `json:"priceToBook"`
+					EnterpriseToEbit  yahooRaw `json:"enterpriseToEbitda"`
+					Beta              yahooRaw `json:"beta"`
+					LastFiscalYearEnd yahooRaw `json:"lastFiscalYearEnd"`
 				} `json:"defaultKeyStatistics"`
 				FinancialData *struct {
-					CurrentPrice     yahooRaw `json:"currentPrice"`
-					TargetMeanPrice  yahooRaw `json:"targetMeanPrice"`
-					RecommendationKey string  `json:"recommendationKey"`
-					GrossMargins     yahooRaw `json:"grossMargins"`
-					ProfitMargins    yahooRaw `json:"profitMargins"`
-					ReturnOnEquity   yahooRaw `json:"returnOnEquity"`
-					RevenueGrowth    yahooRaw `json:"revenueGrowth"`
+					CurrentPrice      yahooRaw `json:"currentPrice"`
+					TargetMeanPrice   yahooRaw `json:"targetMeanPrice"`
+					RecommendationKey string   `json:"recommendationKey"`
+					GrossMargins      yahooRaw `json:"grossMargins"`
+					ProfitMargins     yahooRaw `json:"profitMargins"`
+					ReturnOnEquity    yahooRaw `json:"returnOnEquity"`
+					RevenueGrowth     yahooRaw `json:"revenueGrowth"`
 				} `json:"financialData"`
 				Price *struct {
 					ShortName          string   `json:"shortName"`
 					LongName           string   `json:"longName"`
 					RegularMarketPrice yahooRaw `json:"regularMarketPrice"`
+					RegularMarketTime  int64    `json:"regularMarketTime"`
 				} `json:"price"`
 			} `json:"result"`
 			Error *struct {
@@ -368,10 +609,11 @@ func (c *YFinanceClient) GetStockMetrics(ticker string) (*StockMetrics, error) {
 		if resp.QuoteSummary.Error != nil {
 			return nil, fmt.Errorf("yahoo: %s", resp.QuoteSummary.Error.Description)
 		}
-		return nil, fmt.Errorf("no fundamental data for %s", ticker)
+		return nil, fmt.Errorf("no fundamental data for %s", origTicker)
 	}
 	r := resp.QuoteSummary.Result[0]
-	out := &StockMetrics{Symbol: ticker, Source: "yahoo-quoteSummary"}
+	out := &StockMetrics{Symbol: origTicker, Source: "yahoo-quoteSummary"}
+	sourceURL := fmt.Sprintf("https://finance.yahoo.com/quote/%s/key-statistics/", url.PathEscape(ticker))
 	if r.AssetProfile != nil {
 		out.Sector = r.AssetProfile.Sector
 		out.Industry = r.AssetProfile.Industry
@@ -379,6 +621,9 @@ func (c *YFinanceClient) GetStockMetrics(ticker string) (*StockMetrics, error) {
 	if r.Price != nil {
 		out.Name = firstNonEmpty(r.Price.LongName, r.Price.ShortName)
 		out.Price = r.Price.RegularMarketPrice.F()
+		if r.Price.RegularMarketTime > 0 {
+			out.AsOf = time.Unix(r.Price.RegularMarketTime, 0).UTC().Format(time.RFC3339)
+		}
 	}
 	if r.FinancialData != nil {
 		if out.Price == 0 {
@@ -413,16 +658,25 @@ func (c *YFinanceClient) GetStockMetrics(ticker string) (*StockMetrics, error) {
 		if out.Beta == 0 {
 			out.Beta = r.DefaultKeyStatistics.Beta.F()
 		}
+		if fiscalEnd := int64(r.DefaultKeyStatistics.LastFiscalYearEnd.F()); fiscalEnd > 0 {
+			out.FiscalPeriod = time.Unix(fiscalEnd, 0).UTC().Format("2006-01-02")
+		}
 	}
 	if out.FiftyTwoHigh > out.FiftyTwoLow && out.FiftyTwoLow > 0 && out.Price > 0 {
 		out.FiftyTwoPos = (out.Price - out.FiftyTwoLow) / (out.FiftyTwoHigh - out.FiftyTwoLow) * 100
 	}
+	addMetricSource(out, "yahoo-quoteSummary", "Yahoo Finance key statistics", sourceURL, out.AsOf,
+		"name", "sector", "industry", "price", "trailingPE", "forwardPE", "priceToSales",
+		"enterpriseToEbitda", "peg", "priceToBook", "grossMargin", "profitMargin", "roe",
+		"revenueGrowth", "dividendYield", "beta", "targetMeanPrice", "recommendation",
+		"fiftyTwoWeekHigh", "fiftyTwoWeekLow", "fiftyTwoWeekPos")
+	FinalizeStockMetricsEvidence(out, time.Now())
 	return out, nil
 }
 
 // GetNews fetches related headlines via Yahoo search (no crumb).
 func (c *YFinanceClient) GetNews(ticker string, limit int) ([]NewsItem, error) {
-	ticker = strings.TrimSpace(strings.ToUpper(ticker))
+	ticker = ToYahooSymbol(strings.TrimSpace(strings.ToUpper(ticker)))
 	if limit <= 0 {
 		limit = 8
 	}
@@ -434,10 +688,10 @@ func (c *YFinanceClient) GetNews(ticker string, limit int) ([]NewsItem, error) {
 	}
 	var resp struct {
 		News []struct {
-			Title                string `json:"title"`
-			Publisher            string `json:"publisher"`
-			Link                 string `json:"link"`
-			ProviderPublishTime  int64  `json:"providerPublishTime"`
+			Title               string `json:"title"`
+			Publisher           string `json:"publisher"`
+			Link                string `json:"link"`
+			ProviderPublishTime int64  `json:"providerPublishTime"`
 		} `json:"news"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -460,6 +714,7 @@ func (c *YFinanceClient) GetNews(ticker string, limit int) ([]NewsItem, error) {
 
 // GetFinancialStatement fetches a specific financial statement type.
 func (c *YFinanceClient) GetFinancialStatement(ticker, stmtType string) (string, error) {
+	ticker = ToYahooSymbol(ticker)
 	body, err := c.quoteSummary(ticker, stmtType)
 	if err != nil {
 		return "", err
@@ -482,6 +737,8 @@ func (c *YFinanceClient) GetStockDataFormatted(ticker, tradeDate string) (string
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Stock Data for %s (last %d trading days):\n", ticker, len(bars)))
+	sb.WriteString("Provider: Yahoo Finance Chart\n")
+	sb.WriteString(fmt.Sprintf("Source URL: %s\n", historicalDataURL(ticker, start, end)))
 	sb.WriteString("Date,Open,High,Low,Close,Volume\n")
 	for _, bar := range bars {
 		sb.WriteString(fmt.Sprintf("%s,%.2f,%.2f,%.2f,%.2f,%d\n",
@@ -492,6 +749,7 @@ func (c *YFinanceClient) GetStockDataFormatted(ticker, tradeDate string) (string
 
 // GetInsiderTransactions returns insider transaction data.
 func (c *YFinanceClient) GetInsiderTransactions(ticker string) (string, error) {
+	ticker = ToYahooSymbol(ticker)
 	body, err := c.quoteSummary(ticker, "insiderTransactions")
 	if err != nil {
 		return fmt.Sprintf("Insider transactions unavailable for %s: %v", ticker, err), nil

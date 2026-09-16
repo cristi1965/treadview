@@ -10,8 +10,8 @@
 
 | 线 | 路由 | 说明 |
 |---|---|---|
-| **StockGod UX（「我不是神」）** | `/` `/scan` `/stock/:sym` `/reports` `/notes` … | 主产品 |
-| **TradingAgents 驾驶舱** | `/dashboard` `/journal` `/macro` `/history` `/settings` | 多智能体分析 |
+| **历史研究 + Paper** | `/` → `/dashboard`，以及 `/history` `/tactical` `/settings` | 当前主产品 |
+| **StockGod 实验行情** | `/market` `/scan` `/stock/:sym` `/reports` `/notes` … | 实时门禁通过前仅作实验 |
 
 **硬原则**：自建前端 + 自建数据；不要默认反代 `stockgod.xyz`。
 

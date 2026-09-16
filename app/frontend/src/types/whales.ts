@@ -15,6 +15,15 @@ export interface Investor {
   company: string;        // 机构名称
   avatar?: string;        // 头像 URL（可选）
   type?: string;
+  reportPeriod?: string;
+  filingDate?: string;
+  accession?: string;
+  source?: string;
+  sourceAsOf?: string;
+  sourceURL?: string;
+  syncedAt?: string;
+  stale?: boolean;
+  availablePeriods?: string[];
   
   // 统计数据
   holdings: number;       // 持仓数量
@@ -41,6 +50,11 @@ export interface CongressMember {
     symbolName?: string;
     amount: string;       // 如 "$15K-$50K"
     date: string;         // 如 "6/11"
+    source: string;
+    filingDate: string;
+    sourceURL: string;
+    filingId: string;
+    verified: boolean;
   };
   
   isHot?: boolean;        // 是否热门
@@ -50,8 +64,17 @@ export interface WhaleDetail {
   name: string;
   nameEn: string;
   company: string;
-  reportType: string;     // "13F"
-  updatedAt: string;      // 更新日期
+  reportType: string;
+  updatedAt?: string;
+  reportPeriod?: string;
+  filingDate?: string;
+  accession?: string;
+  source?: string;
+  sourceAsOf?: string;
+  sourceURL?: string;
+  syncedAt?: string;
+  stale?: boolean;
+  availablePeriods?: string[];
   
   // 统计
   totalHoldings: number;

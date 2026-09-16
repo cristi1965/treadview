@@ -8,13 +8,15 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Keep local verification same-origin while allowing an isolated backend port.
+    // Production/Wails remains same-origin and does not use this proxy.
     proxy: {
       '/api': {
-        target: 'http://localhost:8765',
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:8765',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8765',
+        target: (process.env.VITE_DEV_API_TARGET || 'http://localhost:8765').replace(/^http/, 'ws'),
         ws: true,
       },
     },

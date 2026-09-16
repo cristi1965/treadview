@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import { Stock, StockSortBy, SortOrder } from '../types/stocks';
 import { get as apiGet } from '../utils/api';
-import { filterSortPageStocks, loadUsMarketStocks, loadAMarketStocks } from '../utils/stockgodData';
-import { applyQuotesToStocks, fetchLiveQuotes } from '../utils/liveQuotes';
+import { filterSortPageStocks, loadUsMarketStocks, loadAMarketStocks, invalidateUsStocksCache } from '../utils/stockgodData';
+import { applyQuotesToStocks, fetchQuoteResult } from '../utils/liveQuotes';
 import { usePortfolioStore } from './portfolioStore';
 
 interface StocksStore {
   stocks: Stock[];
+  baseUsStocks: Stock[];
+  baseCnStocks: Stock[];
   allUsStocks: Stock[];
   allCnStocks: Stock[];
   loading: boolean;
@@ -23,6 +25,10 @@ interface StocksStore {
   divergenceCount: number;
   dilutionCount: number;
   lastQuoteAt: number;
+  quoteState: 'loading' | 'live' | 'stale' | 'unavailable' | 'error';
+  quoteSource: string;
+  quoteDataTime: string;
+  quoteMessage: string;
 
   market: string;
   sortBy: StockSortBy;
@@ -47,6 +53,9 @@ interface StocksResponse {
   hasMore: boolean;
 }
 
+let stocksRequestSequence = 0;
+let quoteRequestSequence = 0;
+
 function markWatched(stocks: Stock[]): Stock[] {
   const portfolio = usePortfolioStore.getState();
   return stocks.map((stock) => ({
@@ -56,8 +65,9 @@ function markWatched(stocks: Stock[]): Stock[] {
 }
 
 function computeStats(all: Stock[]) {
-  const upCount = all.filter((s) => s.changePercent > 0).length;
-  const downCount = all.filter((s) => s.changePercent < 0).length;
+  const currentQuotes = all.filter((s) => s.quoteStale === false && s.quoteSource && s.quoteDataTime);
+  const upCount = currentQuotes.filter((s) => s.changePercent > 0).length;
+  const downCount = currentQuotes.filter((s) => s.changePercent < 0).length;
   const judged = all.filter((s) => s.judged || s.avgScore > 0);
   const highScoreCount = judged.filter((s) => s.avgScore >= 65).length;
   const consensusCount = judged.filter((s) => {
@@ -79,6 +89,8 @@ function computeStats(all: Stock[]) {
 
 export const useStocksStore = create<StocksStore>((set, getState) => ({
   stocks: [],
+  baseUsStocks: [],
+  baseCnStocks: [],
   allUsStocks: [],
   allCnStocks: [],
   loading: false,
@@ -95,21 +107,31 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
   divergenceCount: 0,
   dilutionCount: 0,
   lastQuoteAt: 0,
+  quoteState: 'loading',
+  quoteSource: '',
+  quoteDataTime: '',
+  quoteMessage: '',
   market: 'us',
   sortBy: 'marketcap',
   order: 'desc',
   searchQuery: '',
 
   fetchStocks: async () => {
+    const requestSequence = ++stocksRequestSequence;
+    quoteRequestSequence += 1;
     const { market, sortBy, order, page, limit, searchQuery, allUsStocks, allCnStocks } = getState();
     set({ loading: true, error: null });
 
     try {
       if (market === 'us') {
-        const all = allUsStocks.length > 0 ? allUsStocks : await loadUsMarketStocks();
+        // Always re-merge live /api/market on fetch so browser/app refresh is not stuck on seed JSON.
+        invalidateUsStocksCache();
+        const all = await loadUsMarketStocks();
+        if (requestSequence !== stocksRequestSequence) return;
         const pageResult = filterSortPageStocks(all, { searchQuery, sortBy, order, page, limit });
         const stats = computeStats(all);
         set({
+          baseUsStocks: all,
           allUsStocks: all,
           stocks: markWatched(pageResult.stocks),
           total: pageResult.total,
@@ -123,9 +145,11 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
 
       if (market === 'cn') {
         const all = allCnStocks.length > 0 ? allCnStocks : await loadAMarketStocks();
+        if (requestSequence !== stocksRequestSequence) return;
         const pageResult = filterSortPageStocks(all, { searchQuery, sortBy, order, page, limit });
         const stats = computeStats(all);
         set({
+          baseCnStocks: all,
           allCnStocks: all,
           stocks: markWatched(pageResult.stocks),
           total: pageResult.total,
@@ -147,6 +171,7 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
       if (searchQuery) params.append('q', searchQuery);
 
       const response = await apiGet<StocksResponse>(`/api/stocks?${params.toString()}`);
+      if (requestSequence !== stocksRequestSequence) return;
       set({
         stocks: markWatched(response.stocks),
         total: response.total,
@@ -161,6 +186,7 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
         dilutionCount: 0,
       });
     } catch (error) {
+      if (requestSequence !== stocksRequestSequence) return;
       console.error('Failed to fetch stocks:', error);
       set({
         error: error instanceof Error ? error.message : 'Failed to fetch stocks',
@@ -170,42 +196,93 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
   },
 
   refreshQuotes: async () => {
-    const { stocks, allUsStocks, allCnStocks, market } = getState();
+    const requestSequence = ++quoteRequestSequence;
+    const { stocks, market, searchQuery, sortBy, order, page, limit } = getState();
+    if (market !== 'us' && market !== 'cn') {
+      return;
+    }
     const pageSyms = stocks.map((s) => s.symbol);
-    // Also refresh top universe slice so subsequent sorts stay fresher
-    const universe = market === 'cn' ? allCnStocks : allUsStocks;
-    const topSyms = universe.slice(0, 120).map((s) => s.symbol);
-    const quotes = await fetchLiveQuotes([...pageSyms, ...topSyms]);
-    if (!Object.keys(quotes).length) return;
+    let result;
+    try {
+      result = await fetchQuoteResult(pageSyms);
+    } catch (error) {
+      if (requestSequence !== quoteRequestSequence) return;
+      set({
+        quoteState: 'error',
+        quoteSource: '',
+        quoteDataTime: '',
+        quoteMessage: error instanceof Error ? error.message : '报价请求失败',
+      });
+      return;
+    }
+    if (requestSequence !== quoteRequestSequence) return;
+    const hasProvenance = Boolean(result.meta.source && result.meta.dataTime && result.meta.dataTime !== 'unknown');
+    const quotesUsable = !result.meta.stale && hasProvenance && Object.keys(result.quotes).length > 0;
+    const quoteMessage = [
+      result.meta.staleReason,
+      ...result.errors,
+      result.missing.length ? `缺少 ${result.missing.length} 个报价` : '',
+      !hasProvenance ? '报价来源或数据时间不可验证' : '',
+    ].filter(Boolean).join('；');
+    if (!quotesUsable) {
+      set({
+        quoteState: result.meta.stale ? 'stale' : 'unavailable',
+        quoteSource: result.meta.source,
+        quoteDataTime: result.meta.dataTime,
+        quoteMessage,
+      });
+      return;
+    }
+    const quotes = result.quotes;
+    const receivedQuoteCount = Object.keys(quotes).length;
 
     set((state) => {
-      const nextUs = applyQuotesToStocks(state.allUsStocks, quotes);
-      const nextCn = applyQuotesToStocks(state.allCnStocks, quotes);
-      const nextPage = applyQuotesToStocks(state.stocks, quotes);
-      const statsSource = state.market === 'cn' ? nextCn : nextUs;
+      const withEvidence = (rows: Stock[]) => applyQuotesToStocks(rows, quotes).map((stock) => {
+        const hasQuote = Boolean(quotes[stock.symbol.toUpperCase()]);
+        return {
+          ...stock,
+          quoteSource: result.meta.source,
+          quoteDataTime: result.meta.dataTime,
+          quoteStale: !hasQuote,
+          quoteStaleReason: hasQuote ? undefined : '当前响应未包含该标的报价',
+        };
+      });
+      const nextUs = withEvidence(state.baseUsStocks.length > 0 ? state.baseUsStocks : state.allUsStocks);
+      const nextCn = withEvidence(state.baseCnStocks.length > 0 ? state.baseCnStocks : state.allCnStocks);
+      const activeUniverse = state.market === 'cn' ? nextCn : nextUs;
+      const pageResult = filterSortPageStocks(activeUniverse, {
+        searchQuery,
+        sortBy,
+        order,
+        page,
+        limit,
+      });
       return {
         allUsStocks: nextUs,
         allCnStocks: nextCn,
-        stocks: markWatched(nextPage),
-        lastQuoteAt: Date.now(),
-        ...computeStats(statsSource.length ? statsSource : nextPage),
+        stocks: markWatched(pageResult.stocks),
+        total: pageResult.total,
+        hasMore: pageResult.hasMore,
+        lastQuoteAt: receivedQuoteCount > 0 ? Date.now() : state.lastQuoteAt,
+        quoteState: 'live',
+        quoteSource: result.meta.source,
+        quoteDataTime: result.meta.dataTime,
+        quoteMessage,
+        ...computeStats(activeUniverse),
       };
     });
   },
 
   setMarket: (market) => {
-    set({ market, page: 1 });
-    getState().fetchStocks();
+    set({ market, page: 1, quoteState: 'loading', quoteSource: '', quoteDataTime: '', quoteMessage: '' });
   },
 
   setSortBy: (sortBy) => {
     set({ sortBy, page: 1 });
-    getState().fetchStocks();
   },
 
   setOrder: (order) => {
     set({ order, page: 1 });
-    getState().fetchStocks();
   },
 
   setSearchQuery: (query) => {
@@ -214,7 +291,6 @@ export const useStocksStore = create<StocksStore>((set, getState) => ({
 
   setPage: (page) => {
     set({ page });
-    getState().fetchStocks();
   },
 
   toggleWatch: (symbol) => {

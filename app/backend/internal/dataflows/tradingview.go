@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	tvWebSocketURL  = "wss://data.tradingview.com/socket.io/websocket"
-	tvOrigin        = "https://data.tradingview.com"
-	tvPingInterval  = 30 * time.Second
+	tvWebSocketURL   = "wss://data.tradingview.com/socket.io/websocket"
+	tvOrigin         = "https://data.tradingview.com"
+	tvPingInterval   = 30 * time.Second
 	tvConnectTimeout = 15 * time.Second
 	tvQuoteTimeout   = 10 * time.Second
 )
@@ -333,9 +333,9 @@ func extractTVPayloads(raw string) []string {
 		for _, part := range parts {
 			part = strings.TrimSpace(part)
 			if part == "" {
-					continue
-				}
-				if m, _ := regexp.MatchString(`^\d+$`, part); m {
+				continue
+			}
+			if m, _ := regexp.MatchString(`^\d+$`, part); m {
 				continue
 			}
 			payloads = append(payloads, part)

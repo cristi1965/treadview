@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Avatar } from '../components/Avatar';
 import { RadarChart } from '../components/scan';
 import { LoadingSpinner } from '../components/common';
-import { Stock } from '../types/stocks';
+import { DataStatus, type DataState } from '../components/common/DataStatus';
+import { ScoreDetail, ScoreValidation, Stock } from '../types/stocks';
 import { formatAUM, formatNumber, formatPercent, formatPrice, getChangeColorClass } from '../utils/format';
-import { apiUrl, get as apiGet } from '../utils/api';
+import { get as apiGet, getWithMeta, type APIResponseMeta, type APIResult } from '../utils/api';
 import { findUsStock } from '../utils/stockgodData';
 import { usePortfolioStore } from '../stores/portfolioStore';
+import { StockLogo } from '../components/StockLogo';
+import { TradingViewAdvancedChart } from '../components/TradingViewAdvancedChart';
+import { BrainCircuit, ExternalLink } from 'lucide-react';
+import { fetchQuoteResult, startQuotePolling } from '../utils/liveQuotes';
 
 interface Holder {
   guruName: string;
@@ -17,15 +22,16 @@ interface Holder {
   change: string;
   weight: number;
   avatarCode: string;
+  reportPeriod?: string;
+  source?: string;
+  sourceAsOf?: string;
+  sourceURL?: string;
+  stale?: boolean;
 }
 
 interface SearchResponse {
   results: Stock[];
   count: number;
-}
-
-interface QuoteResponse {
-  quotes: Record<string, { price: number; pct: number; session?: string }>;
 }
 
 interface FundamentalsResponse {
@@ -51,15 +57,65 @@ interface FundamentalsResponse {
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
   fiftyTwoWeekPos?: number;
+	totalRevenue?: number;
+	netIncome?: number;
+	totalAssets?: number;
+	totalLiabilities?: number;
+	stockholdersEquity?: number;
   source?: string;
+  fiscalPeriod: string;
+  asOf: string;
+	filingDate?: string;
+	accession?: string;
+	sourceURL?: string;
+  fetchedAt: string;
+  sourceLinks: Array<{ source: string; label: string; url: string }>;
+  fieldSources: Record<string, { source: string; url: string; asOf: string; fiscalPeriod?: string; filingDate?: string; accession?: string; periodStart?: string }>;
+}
+
+interface ScoreEvidenceResponse {
+  generated_at?: string;
+  source?: string;
+  method_version?: string;
+  stocks: Record<string, { sc: number[]; div: number; detail?: ScoreDetail }>;
+	validation?: ScoreValidation;
 }
 
 interface NewsItem {
   title: string;
   source: string;
   link?: string;
-  published?: number;
+  published?: number | string;
 }
+
+interface EvidenceState {
+  state: DataState;
+  dataTime?: string;
+  source?: string;
+  message?: string;
+  count?: number;
+}
+
+const requestWithEvidence = async <T,>(endpoint: string): Promise<{ result?: APIResult<T>; error?: string }> => {
+  try {
+    return { result: await getWithMeta<T>(endpoint) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : '请求失败' };
+  }
+};
+
+const evidenceState = (meta: APIResponseMeta | undefined, count: number, error?: string): EvidenceState => {
+  if (error) return { state: 'error', message: error, count };
+  if (!meta) return { state: 'unavailable', message: '缺少来源元数据', count };
+  const details = [meta.staleReason, ...meta.partialErrors].filter(Boolean).join('；') || undefined;
+  if (meta.stale) {
+    return { state: 'stale', dataTime: meta.dataTime, source: meta.source, message: details, count };
+  }
+  if (!meta.source || !meta.dataTime || meta.dataTime === 'unknown') {
+    return { state: 'unavailable', dataTime: meta.dataTime, source: meta.source, message: '来源或数据时间不可验证', count };
+  }
+  return { state: 'live', dataTime: meta.dataTime, source: meta.source, message: details, count };
+};
 
 type ScoreKey = 'buffett' | 'duanyongping' | 'serenity' | 'druckenmiller' | 'sentiment';
 
@@ -83,24 +139,29 @@ const recommendLabel = (key?: string) => {
   return key ? map[key] || key : '—';
 };
 
-const buildMetricRows = (m: FundamentalsResponse | null, livePrice?: number): Array<[string, string]> => {
+const buildMetricRows = (m: FundamentalsResponse | null, livePrice?: number): Array<[string, string, string]> => {
   if (!m) {
     return [
-      ['PE', '—'],
-      ['前瞻PE', '—'],
-      ['PS', '—'],
-      ['EV/EBITDA', '—'],
-      ['PEG', '—'],
-      ['PB', '—'],
-      ['毛利率', '—'],
-      ['净利率', '—'],
-      ['ROE', '—'],
-      ['营收增速', '—'],
-      ['股息率', '—'],
-      ['Beta', '—'],
-      ['分析师目标', '—'],
-      ['分析师评级', '—'],
-      ['52周位置', '—'],
+      ['PE', '—', 'trailingPE'],
+      ['前瞻PE', '—', 'forwardPE'],
+      ['PS', '—', 'priceToSales'],
+      ['EV/EBITDA', '—', 'enterpriseToEbitda'],
+      ['PEG', '—', 'peg'],
+      ['PB', '—', 'priceToBook'],
+      ['毛利率', '—', 'grossMargin'],
+      ['净利率', '—', 'profitMargin'],
+      ['ROE', '—', 'roe'],
+      ['营收增速', '—', 'revenueGrowth'],
+      ['股息率', '—', 'dividendYield'],
+      ['Beta', '—', 'beta'],
+      ['分析师目标', '—', 'targetMeanPrice'],
+      ['分析师评级', '—', 'recommendation'],
+      ['52周位置', '—', 'fiftyTwoWeekPos'],
+	  ['营收', '—', 'totalRevenue'],
+	  ['净利润', '—', 'netIncome'],
+	  ['总资产', '—', 'totalAssets'],
+	  ['总负债', '—', 'totalLiabilities'],
+	  ['股东权益', '—', 'stockholdersEquity'],
     ];
   }
   const price = livePrice || m.price || 0;
@@ -115,21 +176,26 @@ const buildMetricRows = (m: FundamentalsResponse | null, livePrice?: number): Ar
     div = m.dividendYield > 1 ? `${m.dividendYield.toFixed(2)}%` : fmtPctRatio(m.dividendYield);
   }
   return [
-    ['PE', fmtNum(m.trailingPE, 1)],
-    ['前瞻PE', fmtNum(m.forwardPE, 1)],
-    ['PS', fmtNum(m.priceToSales, 1)],
-    ['EV/EBITDA', fmtNum(m.enterpriseToEbitda, 1)],
-    ['PEG', fmtNum(m.peg, 1)],
-    ['PB', fmtNum(m.priceToBook, 1)],
-    ['毛利率', fmtPctRatio(m.grossMargin)],
-    ['净利率', fmtPctRatio(m.profitMargin)],
-    ['ROE', fmtPctRatio(m.roe)],
-    ['营收增速', fmtPctRatio(m.revenueGrowth)],
-    ['股息率', div],
-    ['Beta', fmtNum(m.beta, 1)],
-    ['分析师目标', target],
-    ['分析师评级', recommendLabel(m.recommendation)],
-    ['52周位置', typeof m.fiftyTwoWeekPos === 'number' ? `${Math.round(m.fiftyTwoWeekPos)}%` : '—'],
+    ['PE', fmtNum(m.trailingPE, 1), 'trailingPE'],
+    ['前瞻PE', fmtNum(m.forwardPE, 1), 'forwardPE'],
+    ['PS', fmtNum(m.priceToSales, 1), 'priceToSales'],
+    ['EV/EBITDA', fmtNum(m.enterpriseToEbitda, 1), 'enterpriseToEbitda'],
+    ['PEG', fmtNum(m.peg, 1), 'peg'],
+    ['PB', fmtNum(m.priceToBook, 1), 'priceToBook'],
+    ['毛利率', fmtPctRatio(m.grossMargin), 'grossMargin'],
+    ['净利率', fmtPctRatio(m.profitMargin), 'profitMargin'],
+    ['ROE', fmtPctRatio(m.roe), 'roe'],
+    ['营收增速', fmtPctRatio(m.revenueGrowth), 'revenueGrowth'],
+    ['股息率', div, 'dividendYield'],
+    ['Beta', fmtNum(m.beta, 1), 'beta'],
+    ['分析师目标', target, 'targetMeanPrice'],
+    ['分析师评级', recommendLabel(m.recommendation), 'recommendation'],
+    ['52周位置', typeof m.fiftyTwoWeekPos === 'number' ? `${Math.round(m.fiftyTwoWeekPos)}%` : '—', 'fiftyTwoWeekPos'],
+	['营收', typeof m.totalRevenue === 'number' ? formatAUM(m.totalRevenue) : '—', 'totalRevenue'],
+	['净利润', typeof m.netIncome === 'number' ? formatAUM(m.netIncome) : '—', 'netIncome'],
+	['总资产', typeof m.totalAssets === 'number' ? formatAUM(m.totalAssets) : '—', 'totalAssets'],
+	['总负债', typeof m.totalLiabilities === 'number' ? formatAUM(m.totalLiabilities) : '—', 'totalLiabilities'],
+	['股东权益', typeof m.stockholdersEquity === 'number' ? formatAUM(m.stockholdersEquity) : '—', 'stockholdersEquity'],
   ];
 };
 
@@ -143,71 +209,47 @@ const scoreMeta: Array<{
     key: 'buffett',
     label: '巴菲特',
     framework: '价值 · 护城河',
-    tagline: (s) => (s >= 70 ? '伟大生意·有边际' : s >= 55 ? '伟大生意·太贵观察' : '质地一般·观望'),
+    tagline: (s) => `面板分 ${s}`,
   },
   {
     key: 'duanyongping',
     label: '段永平',
     framework: '价值 · 商业模式',
-    tagline: (s) => (s >= 75 ? '顶级好生意·重仓' : s >= 60 ? '好生意·可拿' : '模式未看懂'),
+    tagline: (s) => `面板分 ${s}`,
   },
   {
     key: 'serenity',
     label: 'Serenity',
     framework: 'alpha · 供应链瓶颈',
-    tagline: (s) => (s >= 70 ? 'bottleneck alpha' : s >= 50 ? 'crowded but valid' : 'no edge here'),
+    tagline: (s) => `面板分 ${s}`,
   },
   {
     key: 'druckenmiller',
     label: '德鲁肯米勒',
     framework: 'alpha · 宏观流动性',
-    tagline: (s) => (s >= 75 ? '顺风重仓' : s >= 55 ? '趋势可跟' : '顺风减弱'),
+    tagline: (s) => `面板分 ${s}`,
   },
   {
     key: 'sentiment',
     label: '情绪资金面',
     framework: '盘口 · 资金流',
-    tagline: (s) => (s >= 65 ? '资金面顺·可跟' : s >= 45 ? '过热拥挤·见顶警惕' : '情绪冰点·逆向区'),
+    tagline: (s) => `面板分 ${s}`,
   },
 ];
 
-const nvdaNarratives: Record<ScoreKey, { summary: string; detail: string }> = {
-  buffett: {
-    summary:
-      '无可争议的伟大生意——CUDA 加宝箱般的客户黏性就是护城河——但市值已把未来十年的好消息预支干净,没有安全边际我只能坐在场边看。',
-    detail:
-      '护城河极宽:CUDA 软件生态锁死开发者、NVLink/网络整机方案、台积电先进产能优先权,三重壁垒让对手很难撕开,毛利率长期 70%+ 证明定价权。但内在价值的麻烦在于周期性——半导体资本开支有节奏,把当前峰值利润率线性外推到十年是危险的,我要的是用四毛买一块的安全边际,如今高价签给的是负边际。生意我打满分,价格让我只能观察不能动手。',
-  },
-  duanyongping: {
-    summary:
-      '商业模式是教科书级的顶级——卖铲子、规模越大成本护城河越深、客户离不开 CUDA——价格对真正看懂的生意从来最不重要,这种我敢重仓拿住。',
-    detail:
-      '商业模式上这是我见过最干净的好生意之一:一次研发、全球复制、边际成本趋零的软件+芯片绑定,客户切换成本极高,本质上是在收 AI 算力的过路费。本分文化上,黄仁勋长期主义、不靠财技、把利润砸回研发和生态,company DNA 没有走歪。价格不是我决策的第一位——看懂了商业模式和人,贵一点也是好生意,真正的风险是看错生意而不是买贵,这家我看懂了。',
-  },
-  serenity: {
-    summary:
-      '逻辑完全成立但这是地球上最明牌的票,我抠供应链是为了在 NVDA 上游那些没人看的瓶颈环节埋伏,而不是去追这头已经被全世界盯着的大象。',
-    detail:
-      '从瓶颈视角看,真正卡脖子、错杀、还没被定价的微观环节不在 NVDA 本身,而在它上游——CoWoS 先进封装、HBM 产能、光模块/CPO、铜连接、电源,这些才是我的猎场。NVDA 是下游 capex 浪潮的最终受益者没错,需求侧逻辑硬,但拥挤度爆表、信息差为零,我的方法论在它身上没有 alpha 可挖。它是验证我整条供应链论点的锚,不是我会下重注的标的。',
-  },
-  druckenmiller: {
-    summary:
-      '这就是这一轮 AI 资本开支大趋势里弹性最高、最干净的载体,宏观顺风+超大盘流动性吸盘,我不看护城河也不看估值,我只要骑在最强的马上。',
-    detail:
-      '自上而下,全球科技巨头的 AI capex 仍在加码,这是一条由产业范式驱动的多年大趋势,而 NVDA 是吸收这股流动性弹性最大的单一载体,资金面够深、能装下大仓位。我从不为估值买单或卖出,趋势在、动量在、龙头地位在,我就重仓骑住;真正会让我砍仓的是 capex 见顶或趋势转向的信号,目前没看到。赔率上,顺着最强宏观主线下注最强标的,这是不对称里最舒服的一种。',
-  },
-  sentiment: {
-    summary:
-      '全市场第一权重、人人满仓、ETF 被动资金和散户情绪同向打满,这种众人皆醉的拥挤度里我闻到的是顶部风险而不是顺风。',
-    detail:
-      '资金面上 NVDA 是所有大型科技/AI ETF 的头号权重,被动流入和主动超配高度同向,13F 机构持仓拥挤,期权 gamma 长期偏多头,意味着任何利好出尽都可能引发拥挤交易的踩踏式回吐。情绪周期上 AI 叙事处于亢奋区而非冰点,没有逆向埋伏的折价空间。我不评价生意好坏,只读盘口众生——当一只票成为全民共识的最大单一押注,情绪面给我的信号是警惕见顶,而非追高。',
-  },
+const scoreMethodDescription = (source?: string) => {
+  const normalized = (source || '').toLowerCase();
+  if (normalized.includes('heuristic')) {
+    return '本地启发式评分：输入主要为行业、市值、单日涨跌和成交量，并做分布校准；不是逐股 AI 研究或真人观点。';
+  }
+  if (normalized.includes('llm')) {
+    return '批量 LLM 方法论模拟：输入范围有限，不代表对应投资人本人观点，也没有经过收益回测。';
+  }
+  if (normalized.includes('seed')) {
+    return '种子评分覆盖：来源于已有评分快照，需结合生成时间和最新基本面复核。';
+  }
+  return '评分方法来源未标明；仅可作为候选排序线索，不应直接用于仓位决策。';
 };
-
-const genericNarrative = (label: string, score: number, stockName: string): { summary: string; detail: string } => ({
-  summary: `${label}框架下对 ${stockName} 给出 ${score} 分 —— 这是按公开方法论做的结构化打分,不是买卖指令。`,
-  detail: `分数越高,代表该框架下的质量/趋势/赔率匹配越好;分数越低,代表估值、拥挤度、周期位置或产业位置至少有一项不合意。请把分数当作研究线索,再核对业务、财报与仓位风险。`,
-});
 
 const chainMap: Record<string, { label: string; upstream: string[]; downstream: string[] }> = {
   NVDA: {
@@ -233,41 +275,6 @@ const scoreColor = (score: number) => {
   return 'text-faint';
 };
 
-const decision = (stock?: Stock | null) => {
-  if (!stock) return { label: '未判读', className: 'text-faint', note: '缺少完整五方评分。' };
-  if (stock.avgScore >= 70 && (stock.divergence ?? 0) < 35) return { label: '共识偏多', className: 'text-up', note: '均分较高且分歧可控,值得进入深挖清单。' };
-  if (stock.avgScore >= 60) return { label: '谨慎观察', className: 'text-accent', note: '质量或趋势有亮点,但仍需确认估值与仓位拥挤。' };
-  if ((stock.divergence ?? 0) >= 35) return { label: '分歧很大', className: 'text-accent', note: '五方看法差异明显,适合亲自研究而非直接跟随。' };
-  return { label: '暂不突出', className: 'text-faint', note: '当前综合分不高,除非你有额外研究优势。' };
-};
-
-const stockArchetype = (stock?: Stock | null) => {
-  if (!stock) return null;
-  const sector = stock.sector.toLowerCase();
-  if (stock.symbol === 'NVDA' || sector.includes('semiconductor')) {
-    return {
-      badge: '垄断股 × 成长股 · 主场 段永平',
-      description: 'AI 算力 / 数据中心加速计算（GPU + 网络 + CUDA 生态）',
-      why: '网络/品牌/技术/规模壁垒,时间是它的盟友',
-      watch: ['毛利率稳定性', '市场份额', '定价权(卡脖子环节最强)'],
-      warning: "估值定性 > 定量,PE / 营收都会失真 —— 要加'垄断溢价',回到产业链定性分析",
-      growth: '兼具 成长股:也看 收入增速 / 毛利率 · 德鲁肯米勒 的菜',
-      focus:
-        '同一笔生意,段永平和德鲁肯米勒都喊重仓(一个因看懂顶级商业模式、一个因骑宏观顺风),而巴菲特因没有安全边际只观察、Serenity 因太明牌只旁证、情绪面更直接把这份全民共识读成见顶警惕——分歧本质是"伟大且顺风"与"拥挤且无折价"是否能并存。',
-    };
-  }
-
-  return {
-    badge: '质量股 × 趋势股 · 需要估值校准',
-    description: `${stock.sector} · 公开行情、基本面与聪明钱交叉观察`,
-    why: '先判断公司属于现金流复利、周期反转、宏观趋势还是情绪交易',
-    watch: ['业务质量', '估值位置', '资金拥挤度'],
-    warning: '不要只看一个估值倍数。高分要确认价格是否过热,低分也要看是否有周期修复或资金面拐点。',
-    growth: '如果五方分歧扩大,优先拆解分歧来自业务质量、估值、产业位置还是短线拥挤度。',
-    focus: '共识不是正确答案,它只是提醒你市场正在用哪一种叙事给这家公司定价。',
-  };
-};
-
 const holderLabel = (name: string, fund: string) => {
   if (/pelosi|议员|congress|politician/i.test(`${name} ${fund}`)) return '政客 / 议员';
   if (/私募|private/i.test(fund)) return '私募大佬';
@@ -284,6 +291,7 @@ const actionLabel = (change: string) => {
 };
 
 export const StockDetail: React.FC = () => {
+  const navigate = useNavigate();
   const { symbol } = useParams<{ symbol: string }>();
   const normalizedSymbol = (symbol || '').toUpperCase();
   const [holders, setHolders] = useState<Holder[]>([]);
@@ -291,8 +299,43 @@ export const StockDetail: React.FC = () => {
   const [fundamentals, setFundamentals] = useState<FundamentalsResponse | null>(null);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [retryVersion, setRetryVersion] = useState(0);
+  const [etfOwnersResult, setEtfOwnersResult] = useState<{
+    owners: { etf: string; name: string; weight: number }[];
+    updated?: string;
+    dataMode?: 'current' | 'historical';
+    degradedReason?: string;
+  }>({ owners: [] });
+  const [chartTimeframe, setChartTimeframe] = useState<'1D' | '5D' | '1M' | '6M' | '1Y' | 'MAX'>('1M');
+  const [quoteStatus, setQuoteStatus] = useState<{
+    state: DataState;
+    dataTime?: string;
+    source?: string;
+    message?: string;
+  }>({ state: 'loading' });
+  const [fundamentalsStatus, setFundamentalsStatus] = useState<EvidenceState>({ state: 'loading' });
+  const [newsStatus, setNewsStatus] = useState<EvidenceState>({ state: 'loading' });
+  const [holdersStatus, setHoldersStatus] = useState<EvidenceState>({ state: 'loading' });
+  const [scoreStatus, setScoreStatus] = useState<EvidenceState>({ state: 'loading' });
   const { addToWatchlist, removeFromWatchlist, isInWatchlist } = usePortfolioStore();
   const watched = isInWatchlist(normalizedSymbol);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiGet<typeof etfOwnersResult>(
+      `/api/etf/owners?sym=${encodeURIComponent(normalizedSymbol)}`
+    )
+      .then((res) => {
+        if (!cancelled) setEtfOwnersResult({ ...res, owners: res?.owners || [] });
+      })
+      .catch(() => {
+        if (!cancelled) setEtfOwnersResult({ owners: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedSymbol]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,58 +344,114 @@ export const StockDetail: React.FC = () => {
       let renderedFromSnapshot = false;
       try {
         setLoading(true);
+        setLoadError('');
         setStock(null);
         setHolders([]);
         setFundamentals(null);
         setNews([]);
+        setQuoteStatus({ state: 'loading' });
+        setFundamentalsStatus({ state: 'loading' });
+        setNewsStatus({ state: 'loading' });
+        setHoldersStatus({ state: 'loading' });
+        setScoreStatus({ state: 'loading' });
 
         const fromData = await findUsStock(normalizedSymbol).catch(() => null);
         if (cancelled) return;
         if (fromData) {
           renderedFromSnapshot = true;
           setStock(fromData);
+          setQuoteStatus({
+            state: fromData.quoteStale === false ? 'live' : 'stale',
+            source: fromData.quoteSource,
+            dataTime: fromData.quoteDataTime,
+            message: fromData.quoteStale === false
+              ? undefined
+              : fromData.quoteStaleReason || '静态市场快照，仅供历史参考',
+          });
           setLoading(false);
         }
 
-        const [holdersResponse, stockResponse, quoteResponse, fundRes, newsRes] = await Promise.all([
-          fetch(apiUrl(`/api/whales/stock/${normalizedSymbol}`)),
+        const [holdersCall, stockResponse, quoteCall, fundCall, newsCall, scoreCall] = await Promise.all([
+          requestWithEvidence<Holder[]>(`/api/whales/stock/${normalizedSymbol}`),
           apiGet<SearchResponse>(`/api/stocks/search?q=${encodeURIComponent(normalizedSymbol)}`).catch(() => ({
             results: [],
             count: 0,
           })),
-          apiGet<QuoteResponse>(`/api/quote?syms=${encodeURIComponent(normalizedSymbol)}`).catch(() => ({
-            quotes: {},
-          })),
-          apiGet<FundamentalsResponse>(`/api/fundamentals?sym=${encodeURIComponent(normalizedSymbol)}`).catch(
-            () => null as unknown as FundamentalsResponse
-          ),
-          apiGet<{ news?: NewsItem[] }>(`/api/news?sym=${encodeURIComponent(normalizedSymbol)}`).catch(() => ({
-            news: [],
-          })),
+          fetchQuoteResult([normalizedSymbol])
+            .then((result) => ({ result, error: '' }))
+            .catch((error) => ({ result: null, error: error instanceof Error ? error.message : '报价请求失败' })),
+          requestWithEvidence<FundamentalsResponse>(`/api/fundamentals?sym=${encodeURIComponent(normalizedSymbol)}`),
+          requestWithEvidence<{ news?: NewsItem[] }>(`/api/news?sym=${encodeURIComponent(normalizedSymbol)}`),
+          requestWithEvidence<ScoreEvidenceResponse>(`/api/panel-summary?sym=${encodeURIComponent(normalizedSymbol)}`),
         ]);
 
         if (cancelled) return;
 
-        if (holdersResponse.ok) {
-          const data = await holdersResponse.json();
-          setHolders(data || []);
-        } else {
-          setHolders([]);
-        }
+        const holderRows = holdersCall.result?.data || [];
+        const fundRes = fundCall.result?.data;
+        const newsRows = newsCall.result?.data?.news || [];
+        setHolders(holderRows);
+        setHoldersStatus(evidenceState(holdersCall.result?.meta, holderRows.length, holdersCall.error));
+        setFundamentalsStatus(evidenceState(fundCall.result?.meta, fundRes?.symbol ? 1 : 0, fundCall.error));
+        setNewsStatus(evidenceState(newsCall.result?.meta, newsRows.length, newsCall.error));
+        const scoreRow = scoreCall.result?.data?.stocks?.[normalizedSymbol];
+        const nextScoreStatus = scoreRow
+          ? evidenceState(scoreCall.result?.meta, 1, scoreCall.error)
+          : { state: scoreCall.error ? 'error' as const : 'unavailable' as const, message: scoreCall.error || '当前标的无评分记录', count: 0 };
+		const scoreValidated = scoreCall.result?.data?.validation?.status === 'validated';
+		const scoreUsable = nextScoreStatus.state === 'live' && scoreValidated && Boolean(scoreRow?.sc?.length && scoreRow.sc.length >= 5);
+		setScoreStatus(scoreValidated ? nextScoreStatus : {
+		  state: 'unavailable', count: scoreRow ? 1 : 0,
+		  message: scoreCall.result?.data?.validation?.reasons?.join('；') || '评分尚未完成真实历史验证，不能作为信号',
+		});
 
         if (fundRes && fundRes.symbol) {
           setFundamentals(fundRes);
         }
-        setNews(newsRes?.news || []);
+        setNews(newsRows);
 
-        const exact =
+        const exactSnapshot =
           fromData ||
           stockResponse.results.find((item) => item.symbol.toLowerCase() === normalizedSymbol.toLowerCase()) ||
           stockResponse.results[0] ||
           null;
+        const exact = exactSnapshot ? {
+          ...exactSnapshot,
+          scores: scoreUsable ? {
+            buffett: Math.round(scoreRow!.sc[0] || 0),
+            duanyongping: Math.round(scoreRow!.sc[1] || 0),
+            serenity: Math.round(scoreRow!.sc[2] || 0),
+            druckenmiller: Math.round(scoreRow!.sc[3] || 0),
+            sentiment: Math.round(scoreRow!.sc[4] || 0),
+          } : { buffett: 0, duanyongping: 0, serenity: 0, druckenmiller: 0, sentiment: 0 },
+          avgScore: scoreUsable ? Math.round(scoreRow!.sc.reduce((sum, value) => sum + value, 0) / scoreRow!.sc.length) : 0,
+          divergence: scoreUsable ? scoreRow!.div : 0,
+          judged: scoreUsable,
+          scoreDetail: scoreUsable ? scoreRow!.detail : undefined,
+          scoreSource: scoreUsable ? scoreCall.result?.data?.source : undefined,
+          scoreGeneratedAt: scoreUsable ? scoreCall.result?.data?.generated_at : undefined,
+		  scoreValidation: scoreCall.result?.data?.validation,
+        } : null;
 
-        const quote = quoteResponse.quotes?.[normalizedSymbol] || quoteResponse.quotes?.[normalizedSymbol.toUpperCase()];
-        if (exact && quote) {
+        const quoteResponse = quoteCall.result;
+        const quoteHasProvenance = Boolean(
+          quoteResponse?.meta.source && quoteResponse.meta.dataTime && quoteResponse.meta.dataTime !== 'unknown'
+        );
+        const quote = quoteResponse?.quotes?.[normalizedSymbol] || quoteResponse?.quotes?.[normalizedSymbol.toUpperCase()];
+        const quoteUsable = Boolean(quoteResponse && !quoteResponse.meta.stale && quoteHasProvenance && quote?.price && quote.price > 0);
+        if (!quoteCall.result) {
+          setQuoteStatus({ state: 'error', message: quoteCall.error || '报价请求失败' });
+        } else {
+          setQuoteStatus({
+            state: quoteResponse.meta.stale ? 'stale' : quoteUsable ? 'live' : 'unavailable',
+            dataTime: quoteResponse.meta.dataTime,
+            source: quoteResponse.meta.source,
+            message: [quoteResponse.meta.staleReason, ...quoteResponse.errors, quoteResponse.missing.length ? '当前标的报价缺失' : '']
+              .filter(Boolean)
+              .join('；') || undefined,
+          });
+        }
+        if (exact && quoteUsable && quote) {
           const livePrice = quote.price || exact.price;
           const livePct = quote.pct ?? exact.changePercent;
           let marketCap = exact.marketCap;
@@ -371,7 +470,7 @@ export const StockDetail: React.FC = () => {
         } else if (exact) {
           setStock(exact);
         } else if (fundRes?.symbol) {
-          const livePrice = quote?.price || fundRes.price || 0;
+          const livePrice = quoteUsable ? quote?.price || 0 : 0;
           const livePct = quote?.pct ?? 0;
           setStock({
             symbol: fundRes.symbol,
@@ -396,6 +495,7 @@ export const StockDetail: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to fetch stock detail:', err);
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : '股票详情加载失败');
       } finally {
         if (!cancelled && !renderedFromSnapshot) {
           setLoading(false);
@@ -410,7 +510,7 @@ export const StockDetail: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [normalizedSymbol]);
+  }, [normalizedSymbol, retryVersion]);
 
   // Keep price/pct live while on the detail page
   useEffect(() => {
@@ -419,13 +519,32 @@ export const StockDetail: React.FC = () => {
     const tick = async () => {
       if (cancelled || document.hidden) return;
       try {
-        const quoteResponse = await apiGet<QuoteResponse>(
-          `/api/quote?syms=${encodeURIComponent(normalizedSymbol)}`
+        const quoteResponse = await fetchQuoteResult([normalizedSymbol]);
+        const quoteHasProvenance = Boolean(
+          quoteResponse.meta.source && quoteResponse.meta.dataTime && quoteResponse.meta.dataTime !== 'unknown'
         );
+        if (quoteResponse.meta.stale || !quoteHasProvenance) {
+          setQuoteStatus({
+            state: quoteResponse.meta.stale ? 'stale' : 'unavailable',
+            dataTime: quoteResponse.meta.dataTime,
+            source: quoteResponse.meta.source,
+            message: [quoteResponse.meta.staleReason, ...quoteResponse.errors].filter(Boolean).join('；') || undefined,
+          });
+          return;
+        }
         const quote =
           quoteResponse.quotes?.[normalizedSymbol] ||
           quoteResponse.quotes?.[normalizedSymbol.toUpperCase()];
-        if (!quote || !(quote.price > 0)) return;
+        if (!quote || !(quote.price > 0)) {
+          setQuoteStatus({ state: 'unavailable', message: '当前标的报价缺失' });
+          return;
+        }
+        setQuoteStatus({
+          state: 'live',
+          dataTime: quoteResponse.meta.dataTime,
+          source: quoteResponse.meta.source,
+          message: quoteResponse.errors.join('；') || undefined,
+        });
         setStock((prev) =>
           prev
             ? {
@@ -440,24 +559,22 @@ export const StockDetail: React.FC = () => {
               }
             : prev
         );
-      } catch {
-        /* ignore */
+      } catch (error) {
+        setQuoteStatus({ state: 'error', message: error instanceof Error ? error.message : '报价刷新失败' });
       }
     };
-    const id = window.setInterval(() => void tick(), 15_000);
+    const stopPolling = startQuotePolling(tick, 15_000, { immediate: false });
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stopPolling();
     };
   }, [normalizedSymbol]);
 
   const topHoldersWeight = useMemo(() => holders.slice(0, 10).reduce((sum, holder) => sum + (holder.weight || 0), 0), [holders]);
   const metricRows = useMemo(() => buildMetricRows(fundamentals, stock?.price), [fundamentals, stock?.price]);
-  const verdict = decision(stock);
-  const archetype = stockArchetype(stock);
   const hasAnyData = !!stock || holders.length > 0;
   const chain = chainMap[normalizedSymbol] || {
-    label: archetype?.description || '产业链定位',
+    label: stock?.sector ? `${stock.sector} · 人工维护产业链索引` : '人工维护产业链索引',
     upstream: ['TSM', 'ASML', 'AVGO'],
     downstream: ['MSFT', 'AMZN', 'GOOGL'],
   };
@@ -473,9 +590,21 @@ export const StockDetail: React.FC = () => {
 
   return (
     <div className="text-foreground">
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 border-l-2 border-rose-500 bg-rose-500/5 px-3 py-2 text-sm text-rose-200">
+          <span>部分详情请求失败：{loadError}</span>
+          <button type="button" onClick={() => setRetryVersion((value) => value + 1)} className="min-h-11 border border-rose-500/40 px-3 font-semibold sm:min-h-9">重试</button>
+        </div>
+      )}
+      {!stock && loadError && (
+        <div className="mb-5 border-y border-line py-8 text-center">
+          <h1 className="text-lg font-semibold text-ink">暂时无法确认 {normalizedSymbol}</h1>
+          <p className="mt-2 text-sm text-muted">这是加载失败，不代表该标的不存在。</p>
+        </div>
+      )}
       <header className="mb-5 border-b border-line pb-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-          <Link to="/" className="transition hover:text-ink">热力图</Link>
+          <Link to="/market" className="transition hover:text-ink">实验行情</Link>
           <span className="text-faint">/</span>
           <Link to="/scan" className="transition hover:text-ink">扫描</Link>
           <span className="text-faint">/</span>
@@ -485,37 +614,64 @@ export const StockDetail: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-                {stock?.name || normalizedSymbol}
-              </h1>
-              <span className="rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">{normalizedSymbol}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (watched) removeFromWatchlist(normalizedSymbol);
-                  else addToWatchlist(normalizedSymbol, stock?.name || normalizedSymbol);
-                }}
-                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-                  watched ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink'
-                }`}
-              >
-                {watched ? '★ 已收藏' : '☆ 收藏'}
-              </button>
+          <div className="flex items-start gap-3">
+            <StockLogo symbol={normalizedSymbol} size={48} className="mt-1" />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+                  {stock?.name || normalizedSymbol}
+                </h1>
+                <span className="rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">{normalizedSymbol}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (watched) removeFromWatchlist(normalizedSymbol);
+                    else addToWatchlist(normalizedSymbol, stock?.name || normalizedSymbol);
+                  }}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                    watched ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink'
+                  }`}
+                >
+                  {watched ? '★ 已收藏' : '☆ 收藏'}
+                </button>
+
+                {/* 🚀 驾驶舱 10-Agent 研判 */}
+                <button
+                  type="button"
+                  onClick={() => navigate(`/dashboard?symbol=${normalizedSymbol}`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-300 transition hover:bg-indigo-500/20 active:scale-95"
+                >
+                  <BrainCircuit size={13} className="text-indigo-400" /> 驾驶舱深度研判
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                {stock?.marketCap ? <span>市值 {formatAUM(stock.marketCap)}</span> : null}
+                {stock?.sector ? <span className="rounded bg-surface-3 px-1.5 py-0.5">{stock.sector}</span> : null}
+              </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-              {stock?.marketCap ? <span>市值 {formatAUM(stock.marketCap)}</span> : null}
-              {stock?.sector ? <span className="rounded bg-surface-3 px-1.5 py-0.5">{stock.sector}</span> : null}
-            </div>
-            {archetype && <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">{archetype.description}</p>}
           </div>
 
           {stock && (
-            <div className="text-right">
-              <div className="font-mono text-2xl font-semibold text-ink">{formatPrice(stock.price)}</div>
-              <div className={`font-mono text-sm font-semibold ${getChangeColorClass(stock.changePercent)}`}>{formatPercent(stock.changePercent)}</div>
-              <div className="mt-1 text-[11px] text-faint">集合竞价 / regular</div>
+            <div className={`rounded-lg border px-3 py-2 text-right ${quoteStatus.state === 'live' ? 'border-transparent' : 'border-amber-500/40 bg-amber-500/10'}`}>
+              {quoteStatus.state !== 'live' && (
+                <div className="mb-1 text-[11px] font-bold text-amber-300">静态快照价格 · 不可用于决策</div>
+              )}
+              <div className={`font-mono text-2xl font-semibold ${quoteStatus.state === 'live' ? 'text-ink' : 'text-amber-200'}`}>
+                {stock.price > 0 ? formatPrice(stock.price) : '—'}
+              </div>
+              <div className={`font-mono text-sm font-semibold ${quoteStatus.state === 'live' ? getChangeColorClass(stock.changePercent) : 'text-faint'}`}>
+                {quoteStatus.state === 'live' ? formatPercent(stock.changePercent) : '涨跌已隐藏'}
+              </div>
+              <div className="mt-1 flex justify-end">
+                <DataStatus
+                  state={quoteStatus.state}
+                  label={quoteStatus.state === 'live' ? '当前报价' : '报价已过期或来源不可用'}
+                  dataTime={quoteStatus.dataTime}
+                  source={quoteStatus.source}
+                  message={quoteStatus.message}
+                  compact
+                />
+              </div>
             </div>
           )}
         </div>
@@ -528,7 +684,7 @@ export const StockDetail: React.FC = () => {
             <h2 className="mt-4 text-lg font-semibold text-ink">没找到这个页面</h2>
             <p className="mt-1.5 text-sm text-muted">链接可能失效,或股票代码不存在。</p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <Link to="/" className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/15">回热力图</Link>
+              <Link to="/market" className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/15">回实验行情</Link>
               <Link to="/scan" className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-muted transition hover:text-ink">去列表找票</Link>
             </div>
           </div>
@@ -537,34 +693,33 @@ export const StockDetail: React.FC = () => {
         <div className="space-y-5">
           {stock && (
             <>
-              {archetype && (
-                <section className="rounded-xl border border-accent/25 bg-accent/10 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-semibold text-accent">👑 这是 {archetype.badge}</div>
-                      <p className="mt-2 text-sm leading-relaxed text-ink">{archetype.why}</p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {archetype.watch.map((item) => (
-                          <span key={item} className="rounded border border-line bg-surface px-2 py-0.5 text-[11px] text-muted">
-                            该看 {item}
-                          </span>
-                        ))}
-                      </div>
+              <section className="border-y border-line py-4">
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-ink">研究证据账本</h2>
+                  <span className="text-[11px] text-faint">状态按各接口独立判断，不以页面加载时间冒充数据时间</span>
+                </div>
+                {[
+                  { label: '行情', status: quoteStatus },
+                  { label: '基本面', status: fundamentalsStatus },
+                  { label: '新闻', status: newsStatus },
+                  { label: '机构披露', status: holdersStatus },
+                  { label: '五方评分', status: scoreStatus },
+                ].map(({ label, status }) => (
+                  <div key={label} className="grid gap-1 border-t border-line/60 py-2.5 sm:grid-cols-[92px_1fr] sm:items-start">
+                    <div className="text-xs font-medium text-ink">
+                      {label}
+                      {'count' in status && typeof status.count === 'number' ? <span className="ml-1 text-faint">({status.count})</span> : null}
                     </div>
-                    <Link
-                      to="/"
-                      className="rounded-lg border border-accent/30 bg-base px-3 py-2 text-xs font-semibold text-accent transition hover:bg-surface-2"
-                    >
-                      在热力图中定位 →
-                    </Link>
+                    <DataStatus
+                      state={status.state}
+                      dataTime={status.dataTime}
+                      source={status.source}
+                      message={status.message}
+                      compact
+                    />
                   </div>
-                  <div className="mt-3 grid gap-2 text-xs leading-relaxed text-muted md:grid-cols-3">
-                    <div className="rounded-lg border border-line bg-surface px-3 py-2">⚠️ {archetype.warning}</div>
-                    <div className="rounded-lg border border-line bg-surface px-3 py-2">{archetype.growth}</div>
-                    <div className="rounded-lg border border-line bg-surface px-3 py-2">类型决定用什么尺子量 —— PE 只是众多指标之一,每类股该看的东西不一样</div>
-                  </div>
-                </section>
-              )}
+                ))}
+              </section>
 
               <div className="grid gap-3 md:grid-cols-4">
                 <section className="rounded-xl border border-line bg-surface p-4">
@@ -577,30 +732,48 @@ export const StockDetail: React.FC = () => {
                 </section>
                 <section className="rounded-xl border border-line bg-surface p-4">
                   <div className="text-xs text-faint">五方均分</div>
-                  <div className={`mt-2 font-mono text-xl font-semibold ${scoreColor(stock.avgScore)}`}>{Math.round(stock.avgScore)}</div>
+				  <div className={`mt-2 font-mono text-xl font-semibold ${scoreStatus.state === 'live' ? scoreColor(stock.avgScore) : 'text-faint'}`}>
+					{scoreStatus.state === 'live' ? Math.round(stock.avgScore) : '—'}
+				  </div>
                 </section>
                 <section className="rounded-xl border border-line bg-surface p-4">
                   <div className="text-xs text-faint">分歧</div>
-                  <div className="mt-2 font-mono text-xl font-semibold text-accent">{Math.round(divergence)}</div>
+				  <div className="mt-2 font-mono text-xl font-semibold text-accent">{scoreStatus.state === 'live' ? Math.round(divergence) : '—'}</div>
                 </section>
               </div>
+
+              {/* TradingView Advanced Real-Time Chart & AI Pivot Levels */}
+              <TradingViewAdvancedChart
+                symbol={normalizedSymbol}
+                price={stock?.price || fundamentals?.price || 0}
+                height={480}
+              />
 
               <section className="rounded-xl border border-line bg-surface p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-semibold text-ink">真实基本面</h2>
-                    <p className="mt-1 text-xs text-muted">
-                      高亮 = 这类股该重点看 · 数据 {fundamentals?.source ? 'Yahoo 实时' : '加载中…'} · 估值随报价
-                    </p>
+                    <p className="mt-1 text-xs text-muted">财报期 {fundamentals?.fiscalPeriod || 'unknown'} · 底层数据截至 {fundamentals?.asOf || 'unknown'} · 抓取于 {fundamentals?.fetchedAt || 'unknown'}</p>
+					<p className="mt-1 text-[11px] text-faint">申报日 {fundamentals?.filingDate || 'unknown'} · accession {fundamentals?.accession || 'unknown'}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-faint">
+                      {(fundamentals?.sourceLinks || []).map((link) => (
+                        <a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                          {link.label} <ExternalLink size={10} className="inline" />
+                        </a>
+                      ))}
+                      {!fundamentals?.sourceLinks?.length && <span>来源链接 unknown</span>}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {metricRows.map(([label, value]) => {
+                  {metricRows.map(([label, value, field]) => {
                     const highlight = ['毛利率', '净利率', 'ROE', '营收增速', '前瞻PE'].includes(label);
+					const provenance = value === '—' ? undefined : fundamentals?.fieldSources?.[field];
                     return (
-                      <div key={label} className={`rounded-lg border px-3 py-2 ${highlight ? 'border-accent/30 bg-accent/5' : 'border-line bg-base'}`}>
+					  <div key={label} title={provenance ? `${provenance.source} · ${provenance.periodStart || '?'} 至 ${provenance.asOf} · ${provenance.accession || ''}` : '字段来源 unknown'} className={`rounded-lg border px-3 py-2 ${highlight ? 'border-accent/30 bg-accent/5' : 'border-line bg-base'}`}>
                         <div className="text-[11px] text-faint">{label}</div>
                         <div className="mt-1 font-mono text-sm font-semibold text-ink">{value}</div>
+                        <div className="mt-1 truncate text-[10px] text-faint">{provenance?.source || 'source unknown'}</div>
                       </div>
                     );
                   })}
@@ -608,31 +781,106 @@ export const StockDetail: React.FC = () => {
               </section>
 
               <section className="rounded-xl border border-line bg-surface p-4">
+                {scoreStatus.state !== 'live' ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                    <DataStatus
+                      state={scoreStatus.state}
+                      label="五方评分来源不可用"
+                      dataTime={scoreStatus.dataTime}
+                      source={scoreStatus.source}
+                      message={scoreStatus.message}
+                    />
+                    <p className="mt-2 text-xs text-muted">旧快照分数和派生结论已隐藏，来源恢复且数据非过期后才显示。</p>
+                  </div>
+                ) : (
+                  <>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-sm font-semibold text-ink">5 方独立评分</h2>
-                    <p className="mt-1 text-xs text-muted">五位投资人各按自身框架独立评分,分歧越大越值得关注</p>
+                    <p className="mt-1 text-xs text-muted">五种公开方法论模拟评分,分歧越大越值得复核</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <RadarChart scores={stock.scores} size={72} />
                     <div className="text-right">
-                      <div className={`text-lg font-semibold ${verdict.className}`}>{verdict.label}</div>
+                      <div className="text-lg font-semibold text-ink">均分 {Math.round(stock.avgScore)}</div>
                       <div className="text-xs text-muted">分歧 {Math.round(divergence)}</div>
                     </div>
                   </div>
                 </div>
 
                 <p className="mt-3 text-[11px] leading-relaxed text-faint">
-                  AI 方法论模拟 — 以下五方判读由 AI 依据各投资人公开的投资方法论生成,并非本人真实观点、发言或持仓,亦不代表其本人。仅供研究参考,非投资建议。
+                  {scoreMethodDescription(stock.scoreSource)} 来源 {stock.scoreSource || '未知'}
+                  {stock.scoreGeneratedAt ? ` · 生成于 ${new Date(stock.scoreGeneratedAt).toLocaleString()}` : ' · 生成时间未知'}。
+                  并非本人真实观点、发言或持仓,亦不代表其本人。仅供研究参考,非投资建议。
                 </p>
+
+				{stock.scoreValidation && (
+				  <div className={`mt-3 border-y border-line py-3 text-xs ${stock.scoreValidation.status === 'validated' ? 'text-muted' : 'text-accent'}`}>
+					<div className="flex flex-wrap items-center justify-between gap-2">
+					  <strong>历史验证: {stock.scoreValidation.status}</strong>
+					  <span className="font-mono">{stock.scoreValidation.method || 'unknown'}</span>
+					</div>
+					<p className="mt-2">
+					  训练样本 {stock.scoreValidation.train_samples ?? 0} · 测试样本 {stock.scoreValidation.test_samples ?? 0}
+					  {stock.scoreValidation.cutoff ? ` · 切分 ${stock.scoreValidation.cutoff}` : ''}
+					</p>
+					<p className="mt-1">基准: {stock.scoreValidation.benchmark || 'unknown'}</p>
+					{stock.scoreValidation.reasons?.length ? <p className="mt-1">原因: {stock.scoreValidation.reasons.join('；')}</p> : null}
+					{stock.scoreValidation.status !== 'validated' && <p className="mt-1 font-semibold">未验证评分不作为投资信号。</p>}
+				  </div>
+				)}
+
+                {stock.scoreDetail ? (
+                  <div className="mt-3 border-y border-line py-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-ink">可复现评分明细</span>
+                      <span className="font-mono text-faint">{stock.scoreDetail.method_version}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-muted sm:grid-cols-4">
+                      <span>快照价 <b className="font-mono text-ink">{stock.scoreDetail.inputs.price}</b></span>
+                      <span>单日涨跌 <b className="font-mono text-ink">{stock.scoreDetail.inputs.day_pct}%</b></span>
+                      <span>市值 <b className="font-mono text-ink">{stock.scoreDetail.inputs.market_cap_b}B</b></span>
+                      <span>成交量 <b className="font-mono text-ink">{stock.scoreDetail.inputs.volume}</b></span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted">
+                      {scoreMeta.map((item, index) => (
+                        <span key={item.key}>{item.label} <b className="font-mono text-ink">{stock.scoreDetail?.raw_scores[index]} → {stock.scoreDetail?.final_scores[index]}</b></span>
+                      ))}
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {scoreMeta.map((item) => {
+                        const componentKey = item.key === 'duanyongping' ? 'duan' : item.key;
+                        const components = stock.scoreDetail?.components?.[componentKey] || [];
+                        return (
+                          <details key={item.key} className="border-t border-line/70 pt-2">
+                            <summary className="cursor-pointer font-medium text-ink">{item.label} 组件贡献 ({components.length})</summary>
+                            <div className="mt-1 space-y-1 font-mono text-[10px] text-muted">
+                              {components.map((component, index) => (
+                                <div key={`${component.rule}-${index}`} className="flex items-center justify-between gap-3">
+                                  <span className="break-all">{component.rule}</span>
+                                  <span className={component.value >= 0 ? 'text-up' : 'text-down'}>{component.value >= 0 ? '+' : ''}{component.value}</span>
+                                </div>
+                              ))}
+                              {!components.length && <span className="text-faint">组件明细 unknown</span>}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                    <p className={`mt-2 text-[11px] ${stock.scoreDetail.reproduces_panel ? 'text-up' : 'text-accent'}`}>
+                      {stock.scoreDetail.reproduces_panel
+                        ? '复算结果与当前面板分一致。'
+                        : '当前面板分含种子或 LLM 覆盖，以下启发式复算不能解释覆盖后的最终分。'}
+                    </p>
+                    <p className="mt-2 break-words font-mono text-[10px] text-faint">{stock.scoreDetail.calibration}</p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-accent">当前评分文件缺少可复现输入明细，不能仅凭最终分核对计算。</p>
+                )}
 
                 <div className="mt-4 space-y-3">
                   {scoreMeta.map((item) => {
                     const score = stock.scores[item.key] ?? 0;
-                    const narrative =
-                      normalizedSymbol === 'NVDA'
-                        ? nvdaNarratives[item.key]
-                        : genericNarrative(item.label, score, stock.name || normalizedSymbol);
                     return (
                       <article key={item.key} className="rounded-lg border border-line bg-base px-4 py-3">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -645,8 +893,9 @@ export const StockDetail: React.FC = () => {
                             <div className="text-[11px] text-muted">{item.tagline(score)}</div>
                           </div>
                         </div>
-                        <p className="mt-2 text-sm leading-relaxed text-ink">{narrative.summary}</p>
-                        <p className="mt-2 text-xs leading-relaxed text-muted">{narrative.detail}</p>
+                        <p className="mt-2 text-xs leading-relaxed text-muted">
+                          仅展示当前可验证面板分，不在前端生成买卖结论或模仿投资人发言。
+                        </p>
                       </article>
                     );
                   })}
@@ -654,8 +903,10 @@ export const StockDetail: React.FC = () => {
 
                 <div className="mt-4 rounded-lg border border-line bg-base px-4 py-3">
                   <h3 className="text-xs font-semibold text-ink">分歧焦点</h3>
-                  <p className="mt-2 text-xs leading-relaxed text-muted">{archetype?.focus || verdict.note}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-muted">仅展示五方数值差异，不在前端按阈值生成偏多、买卖或仓位结论。</p>
                 </div>
+                  </>
+                )}
               </section>
 
               <section className="rounded-xl border border-line bg-surface p-4">
@@ -684,6 +935,29 @@ export const StockDetail: React.FC = () => {
                   </div>
                 </div>
               </section>
+
+              {etfOwnersResult.owners.length > 0 ? (
+                <section className="rounded-xl border border-line bg-surface p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-ink">相关 ETF</h2>
+                    <span className="text-[11px] text-faint">{etfOwnersResult.dataMode === 'historical' ? `历史持仓参考 · ${etfOwnersResult.updated || '时间未知'}` : 'ETF 持仓来源'}</span>
+                  </div>
+                  {etfOwnersResult.dataMode === 'historical' ? <p className="mb-3 text-xs text-amber-200">{etfOwnersResult.degradedReason || '数据已超过当前模式年龄阈值'}</p> : null}
+                  <div className="flex flex-wrap gap-2">
+                    {etfOwnersResult.owners.map((o) => (
+                      <Link
+                        key={o.etf}
+                        to={`/stock/${o.etf}`}
+                        className="rounded-lg border border-line bg-base px-2.5 py-1.5 text-xs transition hover:border-accent/40 hover:text-accent"
+                        title={o.name}
+                      >
+                        <span className="font-mono font-semibold">{o.etf}</span>
+                        <span className="ml-1.5 text-faint">{o.weight}%</span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <section className="rounded-xl border border-line bg-surface p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -716,7 +990,7 @@ export const StockDetail: React.FC = () => {
                 <div className="mt-3 flex flex-wrap gap-3 text-sm">
                   <a className="text-accent hover:underline" href={`https://xueqiu.com/S/${normalizedSymbol}`} target="_blank" rel="noreferrer">雪球 ↗</a>
                   <a className="text-accent hover:underline" href={`https://quote.eastmoney.com/us/${normalizedSymbol}.html`} target="_blank" rel="noreferrer">东方财富 ↗</a>
-                  <Link to="/" className="text-muted hover:text-ink">← 回热力图</Link>
+                  <Link to="/market" className="text-muted hover:text-ink">← 回实验行情</Link>
                 </div>
               </section>
             </>
@@ -745,7 +1019,12 @@ export const StockDetail: React.FC = () => {
               <div className="divide-y divide-line/60 overflow-hidden">
                 {holders.slice(0, 16).map((holder, idx) => (
                   <div key={idx} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-                    <Avatar letter={holder.avatarCode || holder.guruName.charAt(0)} size={40} />
+                    <Avatar
+                      name={holder.guruName}
+                      slug={holder.fundName}
+                      letter={holder.avatarCode || holder.guruName.charAt(0)}
+                      size={40}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-semibold text-ink">
                         <span className="mr-1.5 text-[11px] font-normal text-faint">{holderLabel(holder.guruName, holder.fundName)}</span>
@@ -773,10 +1052,11 @@ export const StockDetail: React.FC = () => {
           </section>
 
           <p className="text-[11px] leading-relaxed text-faint">
-            数据 = Nasdaq/Yahoo 快照 + Dataroma 13F / 龙虎榜公开披露。13F 有约 45 天滞后;龙虎榜为交易席位披露。AI 判读为方法论模拟 · 非投资建议。
+            行情来源以页面状态标识为准；机构持仓来源 = {holdersStatus.source || holders.map((holder) => holder.source).filter(Boolean).join(' / ') || '未知'}，数据时间 = {holdersStatus.dataTime || holders.find((holder) => holder.reportPeriod || holder.sourceAsOf)?.reportPeriod || holders.find((holder) => holder.sourceAsOf)?.sourceAsOf || '未知'}。披露持仓并非实时仓位；AI 判读为方法论模拟 · 非投资建议。
           </p>
         </div>
       )}
+
     </div>
   );
 };

@@ -156,7 +156,7 @@ export const Heatmap: React.FC<HeatmapProps> = ({ nodes, config, layout = 'layer
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}
-        className="rounded-lg border border-line bg-[#0a0b0e]"
+        className="block h-full w-full cursor-crosshair bg-[#06080F]"
       />
 
       <HeatmapTooltip node={hoveredNode} x={tooltipPos.x} y={tooltipPos.y} visible={!!hoveredNode} />
@@ -172,42 +172,6 @@ export const Heatmap: React.FC<HeatmapProps> = ({ nodes, config, layout = 'layer
           </button>
         </div>
       )}
-
-      <div className="absolute bottom-3 left-3 rounded-lg border border-line bg-surface/95 p-2.5 backdrop-blur-sm">
-        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-faint">
-          {layout === 'layer-scatter' ? '分数 0 → 100' : 'Change %'}
-        </div>
-        {layout === 'layer-scatter' ? (
-          <div className="flex flex-wrap gap-2">
-            {[
-              ['#7c3aed', '0-15'],
-              ['#3b82f6', '15-30'],
-              ['#22d3ee', '30-45'],
-              ['#22c55e', '45-60'],
-              ['#eab308', '60-75'],
-              ['#f97316', '75-85'],
-              ['#ef4444', '85+'],
-            ].map(([color, label]) => (
-              <div key={label} className="flex items-center gap-1">
-                <div className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-                <span className="text-[10px] text-muted">{label}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex gap-3">
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-[#22c55e]" />
-              <span className="text-xs text-muted">&gt; 3%</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-[#ef4444]" />
-              <span className="text-xs text-muted">&lt; -3%</span>
-            </div>
-          </div>
-        )}
-        <div className="mt-1.5 text-[10px] text-faint">圆点尺寸 = 市值 · Y = 产业链层</div>
-      </div>
     </div>
   );
 };

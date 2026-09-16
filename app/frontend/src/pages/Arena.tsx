@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { StockGodShell } from '../components/layout/StockGodShell';
-import { LoadingSpinner } from '../components/common';
+import { DataStatus, LoadingSpinner } from '../components/common';
 import { StockSelector, ComparisonCard } from '../components/arena';
-import { get as apiGet } from '../utils/api';
+import { APIError, getWithMeta, type APIResponseMeta } from '../utils/api';
+import { assessDataTrust } from '../utils/dataTrust';
 import { Stock } from '../types/stocks';
 import { findUsStock, loadUsMarketStocks } from '../utils/stockgodData';
+import { useI18n } from '../i18n';
+import { StockLogo } from '../components/StockLogo';
+import { PersonAvatar } from '../components/PersonAvatar';
+import { createLatestRequestGate } from '../utils/latestRequest';
 
 type Player = {
   id: string;
@@ -56,34 +61,45 @@ const PRESETS: Array<[string, string]> = [
 ];
 
 export const Arena: React.FC = () => {
+  const { t } = useI18n();
   const [market, setMarket] = useState<'us' | 'cn'>('us');
   const [players, setPlayers] = useState<Player[]>([]);
   const [settleDate, setSettleDate] = useState('2026-07-02');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<APIResponseMeta | null>(null);
   const [stockA, setStockA] = useState<Stock | null>(null);
   const [stockB, setStockB] = useState<Stock | null>(null);
   const [tab, setTab] = useState<'board' | 'compare'>('board');
   const [expandedTrades, setExpandedTrades] = useState<Set<string>>(() => new Set());
+  const arenaRequestGate = useRef(createLatestRequestGate());
+
+  const loadArena = useCallback(async () => {
+    const request = arenaRequestGate.current.begin();
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getWithMeta<ArenaResponse>(`/api/arena?market=${market}`);
+      if (!arenaRequestGate.current.isCurrent(request)) return;
+      setMeta(result.meta);
+      setPlayers(result.data.players || []);
+      setSettleDate(result.data.settleDate || '2026-07-02');
+      setExpandedTrades(new Set());
+    } catch (err) {
+      if (!arenaRequestGate.current.isCurrent(request)) return;
+      console.error('Failed to load arena:', err);
+      setMeta(err instanceof APIError ? err.meta || null : null);
+      setPlayers([]);
+      setError(err instanceof Error ? err.message : 'Failed to load arena');
+    } finally {
+      if (arenaRequestGate.current.isCurrent(request)) setLoading(false);
+    }
+  }, [market]);
 
   useEffect(() => {
-    const loadArena = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiGet<ArenaResponse>(`/api/arena?market=${market}`);
-        setPlayers(response.players || []);
-        setSettleDate(response.settleDate || '2026-07-02');
-        setExpandedTrades(new Set());
-      } catch (err) {
-        console.error('Failed to load arena:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load arena');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadArena();
-  }, [market]);
+    void loadArena();
+    return () => arenaRequestGate.current.invalidate();
+  }, [loadArena]);
 
   useEffect(() => {
     (async () => {
@@ -94,6 +110,11 @@ export const Arena: React.FC = () => {
     })();
   }, []);
 
+  const selectMarket = (nextMarket: 'us' | 'cn') => {
+    setMarket(nextMarket);
+    if (nextMarket === 'cn') setTab('board');
+  };
+
   const applyPreset = async (left: string, right: string) => {
     const [a, b] = await Promise.all([findUsStock(left), findUsStock(right)]);
     setStockA(a);
@@ -101,21 +122,27 @@ export const Arena: React.FC = () => {
     setTab('compare');
   };
 
+  const arenaTrust = assessDataTrust(meta, players.length > 0);
+
   return (
-    <StockGodShell title="对决">
+    <StockGodShell title={t('nav.arena')}>
       <div className="space-y-4">
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink">五神对决</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink">{t('arena.title')}</h1>
           <div className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-xs">
-            <button onClick={() => setMarket('us')} className={`rounded-md px-4 py-1.5 font-semibold transition ${market === 'us' ? 'bg-accent text-black shadow' : 'text-muted hover:text-ink'}`}>美股</button>
-            <button onClick={() => setMarket('cn')} className={`rounded-md px-4 py-1.5 font-semibold transition ${market === 'cn' ? 'bg-accent text-black shadow' : 'text-muted hover:text-ink'}`}>A 股</button>
+            <button onClick={() => selectMarket('us')} className={`rounded-md px-4 py-1.5 font-semibold transition ${market === 'us' ? 'bg-accent text-black shadow' : 'text-muted hover:text-ink'}`}>{t('arena.us')}</button>
+            <button onClick={() => selectMarket('cn')} className={`rounded-md px-4 py-1.5 font-semibold transition ${market === 'cn' ? 'bg-accent text-black shadow' : 'text-muted hover:text-ink'}`}>{t('arena.cn')}</button>
           </div>
-          <p className="text-sm text-muted">每人 $1,000,000 虚拟资金 · 只买已判读股票池 · 收盘结账 {settleDate} · 非投资建议</p>
+          <p className="text-sm text-muted">
+            {arenaTrust.state === 'live' ? t('arena.sub', { date: settleDate }) : '虚拟盘数据待核验 · 非投资建议'}
+          </p>
         </header>
 
         <div className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm">
-          <button onClick={() => setTab('board')} className={`rounded-md px-4 py-1.5 font-medium ${tab === 'board' ? 'bg-surface-3 text-ink' : 'text-muted'}`}>五神虚拟盘</button>
-          <button onClick={() => setTab('compare')} className={`rounded-md px-4 py-1.5 font-medium ${tab === 'compare' ? 'bg-surface-3 text-ink' : 'text-muted'}`}>股票对决</button>
+          <button onClick={() => setTab('board')} className={`rounded-md px-4 py-1.5 font-medium ${tab === 'board' ? 'bg-surface-3 text-ink' : 'text-muted'}`}>{t('arena.board')}</button>
+          {market === 'us' && (
+            <button onClick={() => setTab('compare')} className={`rounded-md px-4 py-1.5 font-medium ${tab === 'compare' ? 'bg-surface-3 text-ink' : 'text-muted'}`}>{t('arena.compare')}</button>
+          )}
         </div>
 
         <p className="rounded-lg border border-line bg-surface-2/60 px-3 py-2 text-[11px] leading-relaxed text-muted">
@@ -155,16 +182,30 @@ export const Arena: React.FC = () => {
           </div>
         )}
 
-        {tab === 'board' && error && <div className="rounded-xl border border-line bg-surface p-6 text-sm text-down">{error}</div>}
+        {tab === 'board' && !loading && (error || arenaTrust.state !== 'live') && (
+          <div className="rounded-xl border border-line bg-surface p-6">
+            <DataStatus
+              state={error ? 'error' : arenaTrust.state}
+              label={error ? '虚拟盘加载失败' : arenaTrust.state === 'stale' ? '虚拟盘数据已过期' : '虚拟盘数据不可用'}
+              dataTime={meta?.dataTime || 'unknown'}
+              source={meta?.source}
+              message={error || arenaTrust.reason}
+              onRetry={() => void loadArena()}
+            />
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              排名、账户价值、收益、持仓价格与交易结论已隐藏，待来源和数据时间恢复后再展示。
+            </p>
+          </div>
+        )}
 
-        {tab === 'board' && !loading && !error && (
+        {tab === 'board' && !loading && !error && arenaTrust.state === 'live' && (
           <>
             <div className="grid gap-3 md:grid-cols-5">
               {players.map((player) => (
                 <a key={player.id} href={`#${player.id}`} className={`group rounded-xl border bg-surface p-4 transition hover:-translate-y-0.5 hover:border-accent/40 ${player.rank === 1 ? 'border-accent/40 ring-1 ring-accent/20' : 'border-line'}`}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <span className="font-mono text-xs text-faint">{player.rank}</span>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-3 text-sm font-semibold text-accent">{player.short}</span>
+                    <PersonAvatar name={player.name} slug={player.id} size={34} role="GURU" />
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-ink">{player.name}</div>
                       <div className="truncate text-[11px] text-faint">{player.style}</div>
@@ -181,7 +222,7 @@ export const Arena: React.FC = () => {
               {players.map((player) => (
                 <section key={player.id} id={player.id} className="scroll-mt-20 rounded-xl border border-line bg-surface">
                   <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-3 font-semibold text-accent">{player.short}</span>
+                    <PersonAvatar name={player.name} slug={player.id} size={38} role="GURU" />
                     <div className="min-w-0 flex-1">
                       <h2 className="text-sm font-semibold text-ink">{player.rank} · {player.name}</h2>
                       <p className="text-xs text-muted">{player.style}</p>
@@ -209,8 +250,13 @@ export const Arena: React.FC = () => {
                         {player.holdings.map((h) => (
                           <tr key={h.symbol} className="border-b border-line/50 hover:bg-surface-2">
                             <td className="px-4 py-2">
-                              <Link to={`/stock/${h.symbol}`} className="font-mono font-semibold text-ink hover:text-accent">{h.symbol}</Link>
-                              <div className="text-[11px] text-faint">{h.name}</div>
+                              <div className="flex items-center gap-2">
+                                <StockLogo symbol={h.symbol} size={22} />
+                                <div>
+                                  <Link to={`/stock/${h.symbol}`} className="font-mono font-semibold text-ink hover:text-accent">{h.symbol}</Link>
+                                  <div className="text-[11px] text-faint">{h.name}</div>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-3 py-2 text-right font-mono text-muted">{h.shares.toLocaleString()}</td>
                             <td className="px-3 py-2 text-right font-mono text-muted">{h.cost.toFixed(2)}</td>

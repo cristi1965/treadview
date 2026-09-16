@@ -1,12 +1,14 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react'
+import { useI18n } from '../i18n'
 
 interface DecisionGaugeProps {
   decision: 'BUY' | 'HOLD' | 'SELL' | null
 }
 
 export const DecisionGauge: React.FC<DecisionGaugeProps> = ({ decision }) => {
+  const { t } = useI18n()
   if (!decision) return null
 
   const getStyle = () => {
@@ -18,7 +20,7 @@ export const DecisionGauge: React.FC<DecisionGaugeProps> = ({ decision }) => {
           color: 'var(--color-success)',
           shadow: '0 0 30px rgba(16, 185, 129, 0.2)',
           icon: <ShieldCheck size={48} />,
-          text: 'STRATEGIC BUY RECOMMENDATION'
+          text: t('gauge.buy')
         }
       case 'SELL':
         return {
@@ -27,7 +29,7 @@ export const DecisionGauge: React.FC<DecisionGaugeProps> = ({ decision }) => {
           color: 'var(--color-danger)',
           shadow: '0 0 30px rgba(244, 63, 94, 0.2)',
           icon: <ShieldAlert size={48} />,
-          text: 'STRATEGIC SELL RECOMMENDATION'
+          text: t('gauge.sell')
         }
       default:
         return {
@@ -36,7 +38,7 @@ export const DecisionGauge: React.FC<DecisionGaugeProps> = ({ decision }) => {
           color: 'var(--color-warning)',
           shadow: '0 0 30px rgba(245, 158, 11, 0.2)',
           icon: <AlertTriangle size={48} />,
-          text: 'STRATEGIC HOLD RECOMMENDATION'
+          text: t('gauge.hold')
         }
     }
   }

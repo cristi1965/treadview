@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 
@@ -24,8 +28,19 @@ type GeminiClient struct {
 // NewGeminiClient creates a new Gemini client.
 func NewGeminiClient(cfg *config.Config) (*GeminiClient, error) {
 	ctx := context.Background()
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if rawProxy := strings.TrimSpace(cfg.GeminiProxyURL); rawProxy != "" {
+		proxyURL, err := url.Parse(rawProxy)
+		if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
+			return nil, fmt.Errorf("invalid Gemini proxy URL")
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	transport.DialContext = func(ctx context.Context, _, address string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "tcp4", address)
+	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey: cfg.GoogleAPIKey,
+		APIKey: cfg.GoogleAPIKey, HTTPClient: &http.Client{Transport: transport, Timeout: 90 * time.Second},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)

@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
-	"trading-agents/internal/market"
+	marketpkg "trading-agents/internal/market"
 
 	"github.com/gin-gonic/gin"
 )
@@ -45,9 +46,21 @@ type ArenaPlayer struct {
 }
 
 type ArenaResponse struct {
-	Market    string        `json:"market"`
-	SettleDate string       `json:"settleDate"`
-	Players   []ArenaPlayer `json:"players"`
+	Market         string        `json:"market"`
+	SettleDate     string        `json:"settleDate"`
+	Players        []ArenaPlayer `json:"players"`
+	Degraded       bool          `json:"degraded"`
+	DegradedReason string        `json:"degradedReason,omitempty"`
+}
+
+type ArenaQuoteUpdate struct {
+	Applied     bool
+	Degraded    bool
+	Reason      string
+	Missing     []string
+	Source      string
+	DataTime    string
+	Granularity string
 }
 
 func (h *Handler) GetArena(c *gin.Context) {
@@ -65,20 +78,38 @@ func (h *Handler) GetArena(c *gin.Context) {
 	}
 
 	// Dynamically update quotes for holdings
-	updateArenaQuotes(players)
+	quoteUpdate := updateArenaQuotes(players, time.Now())
 
-	// Sort players by total Value and re-rank
-	sort.Slice(players, func(i, j int) bool {
-		return players[i].Value > players[j].Value
-	})
-	for i := range players {
-		players[i].Rank = i + 1
+	if quoteUpdate.Applied {
+		sort.Slice(players, func(i, j int) bool {
+			return players[i].Value > players[j].Value
+		})
+		for i := range players {
+			players[i].Rank = i + 1
+		}
 	}
 
+	partialErrors := []string{}
+	if len(quoteUpdate.Missing) > 0 {
+		partialErrors = append(partialErrors, "missing-or-untrusted-quotes:"+strings.Join(quoteUpdate.Missing, "|"))
+	}
+	setDataFreshness(c, dataFreshnessMeta{
+		Source:        quoteUpdate.Source,
+		DataTime:      quoteUpdate.DataTime,
+		Stale:         quoteUpdate.Degraded,
+		StaleReason:   quoteUpdate.Reason,
+		Refreshable:   true,
+		PartialErrors: partialErrors,
+	})
+	if quoteUpdate.Granularity != "" {
+		c.Header("X-Data-Time-Granularity", quoteUpdate.Granularity)
+	}
 	c.JSON(http.StatusOK, ArenaResponse{
-		Market:     market,
-		SettleDate: settleDate,
-		Players:    players,
+		Market:         market,
+		SettleDate:     settleDate,
+		Players:        players,
+		Degraded:       quoteUpdate.Degraded,
+		DegradedReason: quoteUpdate.Reason,
 	})
 }
 
@@ -101,7 +132,7 @@ func loadArenaFromJSON(market string) ([]ArenaPlayer, string, bool) {
 	return payload.Players, payload.SettleDate, true
 }
 
-func updateArenaQuotes(players []ArenaPlayer) {
+func updateArenaQuotes(players []ArenaPlayer, now time.Time) ArenaQuoteUpdate {
 	// 1. Gather all unique symbols
 	var syms []string
 	for i := range players {
@@ -111,81 +142,80 @@ func updateArenaQuotes(players []ArenaPlayer) {
 	}
 
 	// 2. Fetch quotes dynamically from default provider
-	quotes := market.Default().Quotes(syms)
-
-	// 3. Fallback map for special HK/TW/KS stocks
-	fallback := map[string]struct{ Price, Pct float64 }{
-		"3037.TW":    {Price: 863, Pct: 2.74},
-		"2454.TW":    {Price: 3995, Pct: -0.87},
-		"2382.TW":    {Price: 377, Pct: 1.07},
-		"2308.TW":    {Price: 1885, Pct: -0.26},
-		"9888.HK":    {Price: 113.8, Pct: -3.23},
-		"9988.HK":    {Price: 113.2, Pct: 5.3},
-		"2018.HK":    {Price: 39.02, Pct: 0},
-		"1347.HK":    {Price: 190.6, Pct: 2.42},
-		"1810.HK":    {Price: 25.5, Pct: 0.79},
-		"9698.HK":    {Price: 32.5, Pct: 2.52},
-		"02899.HK":   {Price: 29.2, Pct: -1.82},
-		"0981.HK":    {Price: 76.95, Pct: 1.52},
-		"0700.HK":    {Price: 490, Pct: 2.34},
-		"005930.KS":  {Price: 284000, Pct: 2.34},
-		"3661.TW":    {Price: 4065, Pct: 0.74},
-		"2317.TW":    {Price: 237.5, Pct: 0.21},
-		"2301.TW":    {Price: 214, Pct: 0.47},
-		"3711.TW":    {Price: 625, Pct: -3.99},
-		"000660.KS":  {Price: 2206000, Pct: 6.26},
-		"TSM.TW":     {Price: 1045, Pct: 1.46},
-		"005930-S.KS":{Price: 215000, Pct: 1.18},
-		"KVYO":       {Price: 16.60, Pct: -3.60},
-		"PDD":        {Price: 84.74, Pct: 2.68},
-		"ELV":        {Price: 416.08, Pct: -0.66},
+	result := boundedQuotesForRequest(syms)
+	update := ArenaQuoteUpdate{Source: result.source, DataTime: result.dataTimeLabel, Granularity: result.timeGranularity}
+	if update.DataTime == "" {
+		update.DataTime = dataTimeOrEmpty(result.dataTime)
+	}
+	if update.Source == "" {
+		update.Source = "arena-quotes-unavailable"
+	}
+	stale, reason := quoteResultFreshness(result, now)
+	missing := map[string]bool{}
+	for _, raw := range syms {
+		symbol := strings.ToUpper(strings.TrimSpace(raw))
+		quote, ok := result.quotes[symbol]
+		if !ok || quote.Price <= 0 {
+			missing[symbol] = true
+			continue
+		}
+		individual := newQuoteFetchResult(nil, map[string]marketpkg.Quote{symbol: quote}, false, time.Time{})
+		if quoteStale, _ := quoteResultFreshness(individual, now); quoteStale {
+			missing[symbol] = true
+		}
+	}
+	for symbol := range missing {
+		update.Missing = append(update.Missing, symbol)
+	}
+	sort.Strings(update.Missing)
+	if stale || len(update.Missing) > 0 {
+		update.Degraded = true
+		update.Reason = reason
+		if update.Reason == "" {
+			update.Reason = "complete fresh quote batch unavailable; persisted arena values retained"
+		}
+		return update
 	}
 
 	for i := range players {
 		totalValue := players[i].Cash
-		
+
 		for j := range players[i].Holdings {
 			h := &players[i].Holdings[j]
 			sym := strings.TrimSpace(h.Symbol)
-			
+
 			// Try to find the price and day change percentage
 			var price, pct float64
 			found := false
-			
-			if quotes != nil {
-				if q, ok := quotes[sym]; ok {
+
+			if result.quotes != nil {
+				if q, ok := result.quotes[sym]; ok {
 					price = q.Price
 					pct = q.Pct
 					found = true
 				}
 			}
-			
-			if !found {
-				if q, ok := fallback[sym]; ok {
-					price = q.Price
-					pct = q.Pct
-					found = true
-				}
-			}
-			
+
 			// If found, update price and day
 			if found {
 				h.Price = price
 				h.Day = pct
 			}
-			
+
 			// Calculate Pnl relative to Cost
 			if h.Cost > 0 {
 				h.Pnl = (h.Price - h.Cost) / h.Cost * 100.0
 			}
-			
+
 			// Add to totalValue
 			totalValue += float64(h.Shares) * h.Price
 		}
-		
+
 		players[i].Value = totalValue
 		players[i].ReturnPct = (totalValue - 1000000.0) / 1000000.0 * 100.0
 	}
+	update.Applied = true
+	return update
 }
 
 func getArenaPlayers(market string) []ArenaPlayer {
